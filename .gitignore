@@ -68,6 +68,7 @@ ztest*
 /test/CTestTestfile.cmake
 /test/cmake_install.cmake
 /.cache
+cmake-build-**
 
 configure.log
 a.out
