@@ -1307,6 +1307,8 @@ if(NOT DEFINED BUILD_SHARED_LIBS OR BUILD_SHARED_LIBS)
     set(ZLIB_DLL_SRCS win32/zlib${SUFFIX}1.rc)
 endif()
 
+set(ZLIB_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR} CACHE PATH "Zlib include directories")
+
 add_library(zlib-ng ${ZLIB_ALL_SRCS})
 add_library(zlib-ng::zlib ALIAS zlib-ng)
 
