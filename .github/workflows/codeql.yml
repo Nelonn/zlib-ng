@@ -1,19 +1,14 @@
-name: "CodeQL"
+name: CodeQL
 on:
-  push:
-    branches: [ "develop" ]
-  pull_request:
-    branches: [ "develop" ]
+  workflow_call:
   workflow_dispatch:
   schedule:
     - cron: "27 17 * * 0"
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+
 jobs:
   analyze:
-    name: Analyze
-    runs-on: ubuntu-latest
+    name: CodeQL (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     permissions:
       actions: read
       contents: read
@@ -22,7 +17,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [ cpp ]
+        # https://codeql.github.com/docs/codeql-overview/system-requirements/
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - macos-26-intel
+          - windows-latest
 
     steps:
       - name: Checkout
@@ -33,13 +33,22 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
-          languages: ${{ matrix.language }}
+          languages: cpp
           queries: +security-and-quality
 
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v4
+      - name: Build default config
+        shell: bash
+        run: |
+          cmake -B build-default -S . ${{ runner.os == 'Windows' && '-A x64' || '' }}
+          cmake --build build-default -j4
+
+      - name: Build compat config without optim/strategies, with reduced mem
+        shell: bash
+        run: |
+          cmake -B build-compat -S . -DZLIB_COMPAT=ON -DWITH_NEW_STRATEGIES=OFF -DWITH_OPTIM=OFF -DWITH_REDUCED_MEM=ON ${{ runner.os == 'Windows' && '-A x64' || '' }}
+          cmake --build build-compat -j4
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
         with:
-          category: "/language:${{ matrix.language }}"
+          category: "/oss:${{ matrix.os }}"

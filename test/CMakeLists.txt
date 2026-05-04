@@ -103,7 +103,7 @@ if(WITH_GTEST)
     endif()
 
     # Google test requires MSAN instrumented LLVM C++ libraries
-    if(WITH_SANITIZER STREQUAL "Memory")
+    if(WITH_SANITIZER STREQUAL "memory")
         if(NOT DEFINED ENV{LLVM_BUILD_DIR})
             message(FATAL_ERROR "MSAN instrumented C++ libraries required!")
         endif()
@@ -149,6 +149,7 @@ if(WITH_GTEST)
 
     if(TARGET GTest::GTest)
         set(TEST_SRCS
+            test_chunked.cc
             test_compress.cc
             test_compress_bound.cc
             test_cve-2003-0107.cc
@@ -157,6 +158,7 @@ if(WITH_GTEST)
             test_deflate_dict.cc
             test_deflate_hash_head_0.cc
             test_deflate_header.cc
+            test_deflate.cc
             test_deflate_params.cc
             test_deflate_pending.cc
             test_deflate_prime.cc
@@ -165,10 +167,9 @@ if(WITH_GTEST)
             test_deflate_tune.cc
             test_dict.cc
             test_inflate_adler32.cc
+            test_inflate_back.cc
             test_inflate_copy.cc
-            test_large_buffers.cc
             test_raw.cc
-            test_small_buffers.cc
             test_small_window.cc
             )
 
@@ -202,7 +203,7 @@ if(WITH_GTEST)
             target_compile_options(gtest_zlib PRIVATE -D_XOPEN_SOURCE=700)
         endif()
 
-        if(WITH_SANITIZER STREQUAL "Memory")
+        if(WITH_SANITIZER STREQUAL "memory")
             target_link_directories(gtest_zlib PRIVATE $ENV{LLVM_BUILD_DIR}/lib)
             target_link_options(gtest_zlib PRIVATE
                 -stdlib=libc++

@@ -1,8 +1,5 @@
 name: Pigz
-on: [push, pull_request, workflow_dispatch]
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+on: [workflow_call, workflow_dispatch]
 jobs:
   pigz:
     name: ${{ matrix.name }}
@@ -14,12 +11,12 @@ jobs:
           - name: Ubuntu GCC
             os: ubuntu-latest
             compiler: gcc
-            codecov: ubuntu_gcc_pigz
+            coverage: ubuntu_gcc_pigz
 
           - name: Ubuntu GCC Symbol Prefix
             os: ubuntu-latest
             compiler: gcc
-            codecov: ubuntu_gcc_pigz
+            coverage: ubuntu_gcc_pigz_prefix
             cmake-args: -DZLIB_SYMBOL_PREFIX=zTest_
 
           - name: Ubuntu Clang
@@ -27,14 +24,14 @@ jobs:
             compiler: clang
             packages: llvm-15 llvm-15-tools
             gcov-exec: llvm-cov-15 gcov
-            codecov: ubuntu_clang_pigz
+            coverage: ubuntu_clang_pigz
 
           - name: Ubuntu Clang No Optim
             os: ubuntu-latest
             compiler: clang
             packages: llvm-15 llvm-15-tools
             gcov-exec: llvm-cov-15 gcov
-            codecov: ubuntu_clang_pigz_no_optim
+            coverage: ubuntu_clang_pigz_no_optim
             cmake-args: -DWITH_OPTIM=OFF
 
             # Use v2.6 due to NOTHREADS bug https://github.com/madler/pigz/issues/97
@@ -43,14 +40,12 @@ jobs:
             compiler: clang
             packages: llvm-15 llvm-15-tools
             gcov-exec: llvm-cov-15 gcov
-            codecov: ubuntu_clang_pigz_no_threads
+            coverage: ubuntu_clang_pigz_no_threads
             cmake-args: -DWITH_THREADS=OFF -DPIGZ_VERSION=v2.6
 
           - name: Ubuntu GCC AARCH64
-            os: ubuntu-latest
-            cmake-args: -DCMAKE_TOOLCHAIN_FILE=../../cmake/toolchain-aarch64.cmake
-            packages: qemu-user gcc-aarch64-linux-gnu libc-dev-arm64-cross
-            codecov: ubuntu_gcc_pigz_aarch64
+            os: ubuntu-24.04-arm
+            coverage: ubuntu_gcc_pigz_aarch64
 
     steps:
     - name: Checkout repository
@@ -95,36 +90,40 @@ jobs:
         CI: true
 
     - name: Compile source code
-      run: cmake --build . -j2 --config ${{ matrix.build-config || 'Release' }}
+      run: cmake --build . -j5 --config ${{ matrix.build-config || 'Release' }}
       working-directory: test/pigz
 
     - name: Run test cases
-      run: ctest --verbose -C Release --output-on-failure --max-width 120 -j ${{ matrix.parallels-jobs || '3' }}
+      run: ctest --verbose -C Release --output-on-failure --max-width 120 -j ${{ matrix.parallel-jobs || '5' }}
       working-directory: test/pigz
 
     - name: Generate coverage report
-      if: matrix.codecov
+      if: matrix.coverage
       run: |
         python3 -u -m pip install gcovr
-        python3 -m gcovr -j 3 --gcov-ignore-parse-errors --verbose \
+        python3 -m gcovr -j 5 --gcov-ignore-parse-errors --verbose \
           --exclude '(.*/|^)(_deps|benchmarks)/.*' \
           --exclude-unreachable-branches \
           --merge-mode-functions separate \
           --merge-lines \
           --gcov-executable "${{ matrix.gcov-exec || 'gcov' }}" \
           --root . \
-          --xml --output ${{ matrix.codecov }}.xml
+          --xml --output ${{ matrix.coverage }}.xml
 
-    - name: Upload coverage report artifact
-      uses: actions/upload-artifact@v6
-      if: matrix.codecov
+    - name: Upload job coverage report to coveralls
+      uses: coverallsapp/github-action@v2
+      env:
+        COVERALLS_REPO_TOKEN: "${{ secrets.COVERALLS_REPO_TOKEN }}"
+      if: |
+        matrix.codecov
+        && (env.COVERALLS_REPO_TOKEN != '' || github.repository == 'zlib-ng/zlib-ng')
       with:
-        name: ${{ matrix.name }} (coverage)
-        path: ${{ matrix.codecov }}.xml
-        retention-days: 1
+        file: ${{ matrix.codecov }}.xml
+        flag-name: "${{ matrix.name }}-${{ github.event_name }}"
+        parallel: true
 
     - name: Upload build errors
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       if: failure()
       with:
         name: ${{ matrix.name }} (cmake)
@@ -132,37 +131,5 @@ jobs:
           **/CMakeFiles/CMakeOutput.log
           **/CMakeFiles/CMakeError.log
           **/Testing/Temporary/*
-          coverage.xml
+          ${{ matrix.coverage }}.xml
         retention-days: 30
-
-  coverage:
-    name: Upload Coverage Reports
-    runs-on: ubuntu-latest
-    needs: pigz
-    if: cancelled() == false
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v6
-      with:
-        show-progress: false
-
-    - name: Download all reports
-      uses: actions/download-artifact@v7
-      with:
-        merge-multiple: true
-
-    - name: Display all coverage artifacts
-      run: |
-        ls -R *.xml
-        echo "COVERAGE_REPORTS=`ls -p *.xml | grep -v / | tr '\n' ',' | sed 's/,$//g'`" >> $GITHUB_ENV
-
-    - name: Upload reports to codecov
-      uses: codecov/codecov-action@v5
-      if: (env.CODECOV_TOKEN != '' || github.repository == 'zlib-ng/zlib-ng')
-      with:
-        files: ${{ env.COVERAGE_REPORTS }}
-        name: "pigz-umbrella-${{ github.event_name }}"
-        verbose: true
-        fail_ci_if_error: true
-      env:
-        CODECOV_TOKEN: "${{ secrets.CODECOV_TOKEN }}"

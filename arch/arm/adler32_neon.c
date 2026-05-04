@@ -45,10 +45,10 @@ Z_FORCEINLINE static void NEON_accum32_copy(uint32_t *s, uint8_t *dst, const uin
     int rem = len & 3;
 
     for (size_t i = 0; i < num_iter; ++i) {
-        uint8x16_t d0 = vld1q_u8(buf);
-        uint8x16_t d1 = vld1q_u8(buf + 16);
-        uint8x16_t d2 = vld1q_u8(buf + 32);
-        uint8x16_t d3 = vld1q_u8(buf + 48);
+        uint8x16_t d0 = vld1q_u8_ex(buf, 128);
+        uint8x16_t d1 = vld1q_u8_ex(buf + 16, 128);
+        uint8x16_t d2 = vld1q_u8_ex(buf + 32, 128);
+        uint8x16_t d3 = vld1q_u8_ex(buf + 48, 128);
 
         vst1q_u8(dst, d0);
         vst1q_u8(dst + 16, d1);
@@ -93,7 +93,7 @@ Z_FORCEINLINE static void NEON_accum32_copy(uint32_t *s, uint8_t *dst, const uin
     if (rem) {
         uint32x4_t s3acc_0 = vdupq_n_u32(0);
         while (rem--) {
-            uint8x16_t d0 = vld1q_u8(buf);
+            uint8x16_t d0 = vld1q_u8_ex(buf, 128);
             vst1q_u8(dst, d0);
             dst += 16;
             uint16x8_t adler;
@@ -110,8 +110,8 @@ Z_FORCEINLINE static void NEON_accum32_copy(uint32_t *s, uint8_t *dst, const uin
         s3acc = vaddq_u32(s3acc_0, s3acc);
     }
 
-    uint16x8x4_t t0_t3 = vld1q_u16_x4(taps);
-    uint16x8x4_t t4_t7 = vld1q_u16_x4(taps + 32);
+    uint16x8x4_t t0_t3 = vld1q_u16_x4_ex(taps, 256);
+    uint16x8x4_t t4_t7 = vld1q_u16_x4_ex(taps + 32, 256);
 
     s2acc = vmlal_high_u16(s2acc, t0_t3.val[0], s2_0);
     s2acc_0 = vmlal_u16(s2acc_0, vget_low_u16(t0_t3.val[0]), vget_low_u16(s2_0));
@@ -169,7 +169,7 @@ Z_FORCEINLINE static void NEON_accum32(uint32_t *s, const uint8_t *buf, size_t l
     int rem = len & 3;
 
     for (size_t i = 0; i < num_iter; ++i) {
-        uint8x16x4_t d0_d3 = vld1q_u8_x4(buf);
+        uint8x16x4_t d0_d3 = vld1q_u8_x4_ex(buf, 256);
 
         /* Unfortunately it doesn't look like there's a direct sum 8 bit to 32
          * bit instruction, we'll have to make due summing to 16 bits first */
@@ -208,7 +208,7 @@ Z_FORCEINLINE static void NEON_accum32(uint32_t *s, const uint8_t *buf, size_t l
     if (rem) {
         uint32x4_t s3acc_0 = vdupq_n_u32(0);
         while (rem--) {
-            uint8x16_t d0 = vld1q_u8(buf);
+            uint8x16_t d0 = vld1q_u8_ex(buf, 128);
             uint16x8_t adler;
             adler = vpaddlq_u8(d0);
             s2_6 = vaddw_u8(s2_6, vget_low_u8(d0));
@@ -223,8 +223,8 @@ Z_FORCEINLINE static void NEON_accum32(uint32_t *s, const uint8_t *buf, size_t l
         s3acc = vaddq_u32(s3acc_0, s3acc);
     }
 
-    uint16x8x4_t t0_t3 = vld1q_u16_x4(taps);
-    uint16x8x4_t t4_t7 = vld1q_u16_x4(taps + 32);
+    uint16x8x4_t t0_t3 = vld1q_u16_x4_ex(taps, 256);
+    uint16x8x4_t t4_t7 = vld1q_u16_x4_ex(taps + 32, 256);
 
     s2acc = vmlal_high_u16(s2acc, t0_t3.val[0], s2_0);
     s2acc_0 = vmlal_u16(s2acc_0, vget_low_u16(t0_t3.val[0]), vget_low_u16(s2_0));
@@ -273,8 +273,6 @@ Z_FORCEINLINE static uint32_t adler32_copy_impl(uint32_t adler, uint8_t *dst, co
         return adler32_copy_tail(adler, dst, src, len, sum2, 1, 15, COPY);
 
     uint32_t pair[2];
-    int n = NMAX;
-    unsigned int done = 0;
 
     /* Split Adler-32 into component sums, it can be supplied by
      * the caller sites (e.g. in a PNG file).
@@ -285,52 +283,49 @@ Z_FORCEINLINE static uint32_t adler32_copy_impl(uint32_t adler, uint8_t *dst, co
     /* If memory is not SIMD aligned, do scalar sums to an aligned
      * offset, provided that doing so doesn't completely eliminate
      * SIMD operation. Aligned loads are still faster on ARM, even
-     * though there's no explicit aligned load instruction. Note:
-     * on Android and iOS, their ABIs specify stricter alignment
-     * requirements for the 2,3,4x register ld1 variants. Clang for
-     * these platforms emits an alignment hint in the instruction for exactly
-     * 256 bits. Several ARM SIPs have small penalties for cacheline
-     * crossing loads as well (so really 512 bits is the optimal alignment
-     * of the buffer). 32 bytes should strike a balance, though. Clang and
-     * GCC on Linux will not emit this hint in the encoded instruction and
-     * it's unclear how many SIPs will benefit from it. For Android/iOS, we
-     * fallback to 4x loads and 4x stores, instead. In the copying variant we
-     * do this anyway, as ld1x4 seems to block ILP when stores are in the mix */
-    unsigned int align_offset = ((uintptr_t)src & 31);
-    unsigned int align_adj = (align_offset) ? 32 - align_offset : 0;
-
-    if (align_offset && len >= (16 + align_adj)) {
-        adler32_copy_align(&pair[0], dst, src, align_adj, &pair[1], 31, COPY);
-
-        n -= align_adj;
-        done += align_adj;
-    } else {
-        /* If here, we failed the len criteria test, it wouldn't be
-         * worthwhile to do scalar aligning sums */
-        align_adj = 0;
-    }
-
-    while (done < len) {
-        int remaining = (int)(len - done);
-        n = MIN(remaining, (done == align_adj) ? n : NMAX);
-
-        if (n < 16)
-            break;
+     * when there's no explicit aligned load instruction. Note:
+     * the code currently emits an alignment hint in the instruction
+     * for exactly 256 bits when supported by the compiler. Several ARM
+     * SIPs have small penalties for cacheline crossing loads as well (so
+     * really 512 bits is the optimal alignment of the buffer). 32 bytes
+     * should strike a balance, though. The Cortex-A8 and Cortex-A9
+     * processors are documented to benefit from 128 bit and 64 bit
+     * alignment, but it's unclear which other SIPs will benefit from it.
+     * In the copying variant we use fallback to 4x loads and 4x stores,
+     * as ld1x4 seems to block ILP when stores are in the mix */
+    size_t align_diff = MIN(ALIGN_DIFF(src, 32), len);
+    size_t n = NMAX_ALIGNED32;
+    if (align_diff) {
+        adler32_copy_align(&pair[0], dst, src, align_diff, &pair[1], 31, COPY);
 
         if (COPY)
-            NEON_accum32_copy(pair, dst + done, src + done, n >> 4);
+            dst += align_diff;
+        src += align_diff;
+        len -= align_diff;
+        n = ALIGN_DOWN(n - align_diff, 32);
+    }
+
+    while (len >= 16) {
+        n = MIN(len, n);
+
+        if (COPY)
+            NEON_accum32_copy(pair, dst, src, n >> 4);
         else
-            NEON_accum32(pair, src + done, n >> 4);
+            NEON_accum32(pair, src, n >> 4);
 
         pair[0] %= BASE;
         pair[1] %= BASE;
 
-        int actual_nsums = (n >> 4) << 4;
-        done += actual_nsums;
+        size_t k = (n >> 4) << 4;
+        src += k;
+        if (COPY)
+            dst += k;
+        len -= k;
+        n = NMAX_ALIGNED32;
     }
 
     /* Process tail (len < 16).  */
-    return adler32_copy_tail(pair[0], dst + done, src + done, len - done, pair[1], done < len, 15, COPY);
+    return adler32_copy_tail(pair[0], dst, src, len, pair[1], len != 0 || align_diff, 15, COPY);
 }
 
 Z_INTERNAL uint32_t adler32_neon(uint32_t adler, const uint8_t *src, size_t len) {
@@ -338,7 +333,14 @@ Z_INTERNAL uint32_t adler32_neon(uint32_t adler, const uint8_t *src, size_t len)
 }
 
 Z_INTERNAL uint32_t adler32_copy_neon(uint32_t adler, uint8_t *dst, const uint8_t *src, size_t len) {
+#if OPTIMAL_CMP >= 32
     return adler32_copy_impl(adler, dst, src, len, 1);
+#else
+    /* Without unaligned access, interleaved stores get decomposed into byte ops */
+    adler = adler32_neon(adler, src, len);
+    memcpy(dst, src, len);
+    return adler;
+#endif
 }
 
 #endif

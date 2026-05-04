@@ -5,7 +5,7 @@ These benchmarks are written using [Google Benchmark](https://github.com/google/
 
 To increase the number of times each benchmark iteration is run use:
 
-```
+```sh
 --benchmark_repetitions=20
 ```
 
@@ -13,8 +13,16 @@ To increase the number of times each benchmark iteration is run use:
 
 To filter out which benchmarks are performed use:
 
-```
+```sh
 --benchmark_filter="adler32*"
+```
+
+*Cooldown*
+
+To insert a cooldown sleep between benchmark families to mitigate thermal throttling:
+
+```sh
+--benchmark_cooldown=3
 ```
 
 There are two different benchmarks, micro and macro.
@@ -30,6 +38,22 @@ Benchmarks include implementations of:
 
 By default these benchmarks report things on the nanosecond scale and are small enough
 to measure very minute differences.
+
+*Alternative zlib library*
+
+To benchmark against an alternative zlib-compatible library, use the `ZLIB_LIBRARY`
+CMake argument. When set, only the public API benchmarks are built:
+
+```sh
+cmake -S . -B build-alt \
+    -DZLIB_COMPAT=ON \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DBUILD_TESTING=ON \
+    -DWITH_BENCHMARKS=ON \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DWITH_RUNTIME_CPU_DETECTION=OFF \
+    -DZLIB_LIBRARY=/path/to/libz.a
+```
 
 ### Benchmark benchmark_zlib_apps
 These benchmarks measure applications of zlib as a whole.  Currently the only examples

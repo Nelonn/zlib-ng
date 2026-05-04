@@ -6,11 +6,12 @@
 #ifdef LOONGARCH_LSX
 
 #include "zbuild.h"
+#include "zsanitizer.h"
 #include "zmemory.h"
 
 #include <lsxintrin.h>
 #include "lsxintrin_ext.h"
-#include "arch/generic/chunk_128bit_perm_idx_lut.h"
+#include "arch/shared/chunk_128bit_perm_idx_lut.h"
 
 typedef __m128i chunk_t;
 

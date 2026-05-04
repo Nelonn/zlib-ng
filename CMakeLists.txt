@@ -39,6 +39,7 @@ include(CheckIncludeFile)
 include(CheckCSourceCompiles)
 include(CheckCSourceRuns)
 include(CheckCCompilerFlag)
+include(CheckLinkerFlag)
 include(CMakeDependentOption)
 include(CMakePackageConfigHelpers)
 include(CTest)
@@ -105,7 +106,7 @@ Default is no prefix (empty prefix).")
 
 # Add multi-choice option
 set(WITH_SANITIZER OFF CACHE STRING "Enable sanitizer support")
-set_property(CACHE WITH_SANITIZER PROPERTY STRINGS "OFF" "Memory" "Address" "Undefined" "Thread")
+set_property(CACHE WITH_SANITIZER PROPERTY STRINGS "OFF" "memory" "address" "undefined" "thread")
 
 if(BASEARCH_ARM_FOUND)
     cmake_dependent_option(WITH_ARMV6 "Build with ARMv6 SIMD" ON ARCH_32BIT OFF)
@@ -126,7 +127,12 @@ elseif(BASEARCH_RISCV_FOUND)
 elseif(BASEARCH_S360_FOUND)
     option(WITH_DFLTCC_DEFLATE "Build with DFLTCC intrinsics for compression on IBM Z" OFF)
     option(WITH_DFLTCC_INFLATE "Build with DFLTCC intrinsics for decompression on IBM Z" OFF)
-    option(WITH_CRC32_VX "Build with vectorized CRC32 on IBM Z" ON)
+    option(WITH_S390_VX "Build with S390 VX intrinsics on IBM Z" ON)
+
+    # Provided for backward compatibility
+    if(DEFINED WITH_CRC32_VX)
+        set(WITH_S390_VX ${WITH_CRC32_VX})
+    endif()
 elseif(BASEARCH_LOONGARCH_FOUND)
     option(WITH_CRC32_LA "Build with vectorized CRC32 on LoongArch" ON)
     option(WITH_LSX "Build with vectorized LSX on LoongArch" ON)
@@ -165,7 +171,7 @@ elseif(BASEARCH_X86_FOUND)
     cmake_dependent_option(WITH_AVX2 "Build with AVX2" ON "WITH_SSE42" OFF)
     cmake_dependent_option(WITH_AVX512 "Build with AVX512" ON "WITH_AVX2" OFF)
     cmake_dependent_option(WITH_AVX512VNNI "Build with AVX512 VNNI extensions" ON "WITH_AVX512" OFF)
-    cmake_dependent_option(WITH_VPCLMULQDQ "Build with VPCLMULQDQ" ON "WITH_PCLMULQDQ;WITH_AVX512" OFF)
+    cmake_dependent_option(WITH_VPCLMULQDQ "Build with VPCLMULQDQ" ON "WITH_PCLMULQDQ;WITH_AVX2" OFF)
 endif()
 
 option(INSTALL_UTILS "Copy minigzip and minideflate during install" OFF)
@@ -179,7 +185,7 @@ mark_as_advanced(FORCE
     WITH_ARMV6
     WITH_DFLTCC_DEFLATE
     WITH_DFLTCC_INFLATE
-    WITH_CRC32_VX
+    WITH_S390_VX
     WITH_AVX2 WITH_SSE2
     WITH_SSSE3 WITH_SSE41 WITH_SSE42
     WITH_PCLMULQDQ
@@ -237,10 +243,6 @@ elseif(MSVC)
     # See also https://cmake.org/cmake/help/latest/variable/MSVC_VERSION.html
     if(MSVC_VERSION VERSION_LESS 1800)
         message(SEND_ERROR "Unsupported Visual Studio compiler version (requires 2013 or later).")
-    endif()
-    if(MSVC_VERSION VERSION_LESS 1930)
-        message(STATUS "Old Visual Studio compiler version, disabling SSE2/SSE4.1 Chorba variants (requires 2022 or later).")
-        add_definitions(-DWITHOUT_CHORBA_SSE)
     endif()
     # TODO. ICC can be used through MSVC. I'm not sure if we'd ever see that combination
     # (who'd use cmake from an IDE...) but checking for ICC before checking for MSVC should
@@ -557,14 +559,22 @@ set(CMAKE_REQUIRED_DEFINITIONS)
 #
 # Check whether a sanitizer was requested
 #
-if(WITH_SANITIZER STREQUAL "Address")
+message(STATUS "Checking for sanitizer option")
+
+string(TOLOWER "${WITH_SANITIZER}" WITH_SANITIZER)
+if(NOT WITH_SANITIZER)
+    message(STATUS " sanitizer not enabled")
+elseif(WITH_SANITIZER STREQUAL "address")
     add_address_sanitizer()
-elseif(WITH_SANITIZER STREQUAL "Memory")
+elseif(WITH_SANITIZER STREQUAL "memory")
     add_memory_sanitizer()
-elseif(WITH_SANITIZER STREQUAL "Thread")
+elseif(WITH_SANITIZER STREQUAL "thread")
     add_thread_sanitizer()
-elseif(WITH_SANITIZER STREQUAL "Undefined")
+elseif(WITH_SANITIZER STREQUAL "undefined")
     add_undefined_sanitizer()
+else()
+    message(FATAL_ERROR "Unknown WITH_SANITIZER option: '${WITH_SANITIZER}'\n"
+                    "WITH_SANITIZER must be one of: 'memory', 'address', 'undefined', 'thread'")
 endif()
 
 #
@@ -931,15 +941,24 @@ if(WITH_OPTIM)
             add_definitions(-DS390_DFLTCC_INFLATE)
             list(APPEND ZLIB_ARCH_SRCS ${ARCHDIR}/dfltcc_inflate.c)
         endif()
-        if(WITH_CRC32_VX)
-            check_vgfma_intrinsics()
-            if(HAVE_VGFMA_INTRIN)
-                add_definitions(-DS390_CRC32_VX)
-                set(CRC32_VX_SRCS ${ARCHDIR}/crc32-vx.c)
-                list(APPEND ZLIB_ARCH_SRCS ${CRC32_VX_SRCS})
-                set_property(SOURCE ${CRC32_VX_SRCS} PROPERTY COMPILE_FLAGS "${VGFMAFLAG} ${NOLTOFLAG}")
+        if(WITH_S390_VX)
+            check_s390_vx_intrinsics()
+            if(HAVE_S390_VX_INTRIN)
+                add_definitions(-DS390_VX)
+                if(NOT HAVE_S390_INTRIN)
+                    add_definitions(-DS390_FEATURES)
+                    list(APPEND ZLIB_ARCH_HDRS ${ARCHDIR}/s390_functions.h)
+                    if(WITH_RUNTIME_CPU_DETECTION)
+                        list(APPEND ZLIB_ARCH_HDRS ${ARCHDIR}/s390_features.h)
+                        list(APPEND ZLIB_ARCH_SRCS ${ARCHDIR}/s390_features.c)
+                    endif()
+                endif()
+                set(S390_VX_SRCS ${ARCHDIR}/crc32_vx.c ${ARCHDIR}/slide_hash_vx.c)
+                list(APPEND ZLIB_ARCH_SRCS ${S390_VX_SRCS})
+                set_property(SOURCE ${S390_VX_SRCS} PROPERTY COMPILE_FLAGS "${S390VXFLAG} ${NOLTOFLAG}")
+                add_feature_info(S390_VX 1 "S390 Vector Extension optimizations using \"${S390VXFLAG}\"")
             else()
-                set(WITH_CRC32_VX OFF)
+                set(WITH_S390_VX OFF)
             endif()
         endif()
     elseif(BASEARCH_LOONGARCH_FOUND)
@@ -1115,12 +1134,22 @@ if(WITH_OPTIM)
         endif()
         if(WITH_VPCLMULQDQ)
             check_vpclmulqdq_intrinsics()
-            if(HAVE_VPCLMULQDQ_INTRIN AND WITH_PCLMULQDQ AND WITH_AVX512)
-                add_definitions(-DX86_VPCLMULQDQ_CRC)
-                set(VPCLMULQDQ_SRCS ${ARCHDIR}/crc32_vpclmulqdq.c)
-                add_feature_info(VPCLMUL_CRC 1 "Support CRC hash generation using VPCLMULQDQ, using \"${PCLMULFLAG} ${VPCLMULFLAG} ${AVX512FLAG}\"")
-                list(APPEND ZLIB_ARCH_SRCS ${VPCLMULQDQ_SRCS})
-                set_property(SOURCE ${VPCLMULQDQ_SRCS} PROPERTY COMPILE_FLAGS "${PCLMULFLAG} ${VPCLMULFLAG} ${AVX512FLAG} ${NOLTOFLAG}")
+            if(HAVE_VPCLMULQDQ_INTRIN AND WITH_PCLMULQDQ AND WITH_AVX2)
+                add_definitions(-DX86_VPCLMULQDQ_AVX2)
+                set(VPCLMULQDQ_AVX2_SRCS ${ARCHDIR}/crc32_vpclmulqdq_avx2.c)
+                set(VPCLMULQDQ_AVX2_FLAGS "${PCLMULFLAG} ${VPCLMULFLAG} ${AVX2FLAG}")
+                list(APPEND ZLIB_ARCH_SRCS ${VPCLMULQDQ_AVX2_SRCS})
+                set_property(SOURCE ${VPCLMULQDQ_AVX2_SRCS} PROPERTY COMPILE_FLAGS "${VPCLMULQDQ_AVX2_FLAGS} ${NOLTOFLAG}")
+                add_feature_info(VPCLMULQDQ_AVX2 1 "Support CRC using VPCLMULQDQ (AVX2), using \"${VPCLMULQDQ_AVX2_FLAGS}\"")
+
+                if(WITH_AVX512)
+                    add_definitions(-DX86_VPCLMULQDQ_AVX512)
+                    set(VPCLMULQDQ_AVX512_SRCS ${ARCHDIR}/crc32_vpclmulqdq_avx512.c)
+                    set(VPCLMULQDQ_AVX512_FLAGS "${PCLMULFLAG} ${VPCLMULFLAG} ${AVX512FLAG}")
+                    list(APPEND ZLIB_ARCH_SRCS ${VPCLMULQDQ_AVX512_SRCS})
+                    set_property(SOURCE ${VPCLMULQDQ_AVX512_SRCS} PROPERTY COMPILE_FLAGS "${VPCLMULQDQ_AVX512_FLAGS} ${NOLTOFLAG}")
+                    add_feature_info(VPCLMULQDQ_AVX512 1 "Support CRC using VPCLMULQDQ (AVX-512), using \"${VPCLMULQDQ_AVX512_FLAGS}\"")
+                endif()
             else()
                 set(WITH_VPCLMULQDQ OFF)
             endif()
@@ -1204,7 +1233,7 @@ set(ZLIB_PUBLIC_HDRS
     ${CMAKE_CURRENT_BINARY_DIR}/zlib${SUFFIX}.h
 )
 set(ZLIB_PRIVATE_HDRS
-    arch/generic/chunk_permute_table.h
+    arch/shared/chunk_permute_table.h
     arch/generic/generic_functions.h
     adler32_p.h
     arch_functions.h
@@ -1258,30 +1287,17 @@ set(ZLIB_SRCS
     zutil.c
 )
 
-set(ZLIB_ALL_FALLBACK_SRCS
+set(ZLIB_GENERIC_SRCS
     arch/generic/adler32_c.c
     arch/generic/chunkset_c.c
     arch/generic/compare256_c.c
     arch/generic/crc32_braid_c.c
+    arch/generic/crc32_chorba_c.c
     arch/generic/slide_hash_c.c
 )
 
 if(WITH_ALL_FALLBACKS)
-    list(APPEND ZLIB_GENERIC_SRCS ${ZLIB_ALL_FALLBACK_SRCS})
     add_definitions(-DWITH_ALL_FALLBACKS)
-elseif(BASEARCH_X86_FOUND AND ARCH_64BIT AND WITH_SSE2)
-    # x86_64 always has SSE2, so let the SSE2 functions act as fallbacks.
-    list(APPEND ZLIB_GENERIC_SRCS
-        arch/generic/adler32_c.c
-        arch/generic/crc32_braid_c.c
-    )
-else()
-    list(APPEND ZLIB_GENERIC_SRCS ${ZLIB_ALL_FALLBACK_SRCS})
-    add_definitions(-DWITH_ALL_FALLBACKS)
-endif()
-
-if(WITH_CRC32_CHORBA)
-    list(APPEND ZLIB_SRCS arch/generic/crc32_chorba_c.c)
 endif()
 
 if(WITH_RUNTIME_CPU_DETECTION)
@@ -1539,9 +1555,9 @@ elseif(BASEARCH_RISCV_FOUND)
     add_feature_info(WITH_RVV WITH_RVV "Build with RVV intrinsics")
     add_feature_info(WITH_RISCV_ZBC WITH_RISCV_ZBC "Build with RISCV ZBC")
 elseif(BASEARCH_S360_FOUND)
-    add_feature_info(WITH_CRC32_VX WITH_CRC32_VX "Build with vectorized CRC32 on IBM Z")
     add_feature_info(WITH_DFLTCC_DEFLATE WITH_DFLTCC_DEFLATE "Build with DFLTCC intrinsics for compression on IBM Z")
     add_feature_info(WITH_DFLTCC_INFLATE WITH_DFLTCC_INFLATE "Build with DFLTCC intrinsics for decompression on IBM Z")
+    add_feature_info(WITH_S390_VX WITH_S390_VX "Build with S390 VX intrinsics on IBM Z")
 elseif(BASEARCH_LOONGARCH_FOUND)
     add_feature_info(WITH_CRC32_LA WITH_CRC32_LA "Build with vectorized CRC32 on LoongArch")
     add_feature_info(WITH_LSX WITH_LSX "Build with vectorized LSX on LoongArch")

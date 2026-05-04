@@ -1,17 +1,16 @@
 name: CMake
-on: [push, pull_request, workflow_dispatch]
+on: [workflow_call, workflow_dispatch]
 env:
   TERM: xterm-256color
   GTEST_COLOR: 1
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  # Don't abort on push to avoid incomplete coveralls uploads
-  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
   cmake:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell || 'bash' }}
     timeout-minutes: 80
     strategy:
       fail-fast: false
@@ -23,21 +22,21 @@ jobs:
             cxx-compiler: g++
             cxxflags: -Wno-maybe-uninitialized
             cmake-args: -DWITH_SANITIZER=Address -DWITH_BENCHMARKS=ON
-            codecov: ubuntu_gcc
+            coverage: ubuntu_gcc
 
           - name: Ubuntu GCC Native Instructions
             os: ubuntu-latest
             compiler: gcc
             cxx-compiler: g++
             cmake-args: -DWITH_NATIVE_INSTRUCTIONS=ON
-            codecov: ubuntu_gcc_native_inst
+            coverage: ubuntu_gcc_native_inst
 
           - name: Ubuntu GCC Native Instructions (AVX)
             os: ubuntu-latest
             compiler: gcc
             cxx-compiler: g++
             cmake-args: -DWITH_NATIVE_INSTRUCTIONS=ON -DNATIVE_ARCH_OVERRIDE="-mavx -mpclmul"
-            codecov: ubuntu_gcc_native_inst_avx
+            coverage: ubuntu_gcc_native_inst_avx
 
           - name: Ubuntu GCC Symbol Prefix -O3
             os: ubuntu-latest
@@ -45,14 +44,14 @@ jobs:
             cxx-compiler: g++
             cmake-args: -DZLIB_SYMBOL_PREFIX=zTest_ -DWITH_BENCHMARKS=ON
             cflags: -O3
-            # Skipping codecov to allow -O3
+            # Skipping coverage to allow -O3
 
           - name: Ubuntu GCC Compat Symbol Prefix
             os: ubuntu-latest
             compiler: gcc
             cxx-compiler: g++
             cmake-args: -DZLIB_COMPAT=ON -DZLIB_SYMBOL_PREFIX=zTest_ -DWITH_BENCHMARKS=ON
-            codecov: ubuntu_gcc_compat_sprefix
+            coverage: ubuntu_gcc_compat_sprefix
 
           - name: Ubuntu GCC -O1 UBSAN
             os: ubuntu-latest
@@ -60,7 +59,7 @@ jobs:
             cxx-compiler: g++
             cmake-args: -DWITH_SANITIZER=Undefined
             cflags: -O1
-            # Skipping codecov to allow -O1
+            # Skipping coverage to allow -O1
 
           - name: Ubuntu GCC 32-bit
             os: ubuntu-latest
@@ -68,7 +67,7 @@ jobs:
             cxx-compiler: g++
             cmake-args: -DCMAKE_C_FLAGS=-m32 -DCMAKE_CXX_FLAGS=-m32 -DCMAKE_SHARED_LINKER_FLAGS=-m32 -DCMAKE_EXE_LINKER_FLAGS=-m32 -DWITH_BENCHMARKS=ON
             packages: gcc-multilib g++-multilib
-            codecov: ubuntu_gcc_m32
+            coverage: ubuntu_gcc_m32
 
           - name: Ubuntu GCC C17 MMAP
             os: ubuntu-latest
@@ -76,56 +75,56 @@ jobs:
             cxx-compiler: g++
             cmake-args: -DCMAKE_C_STANDARD=17
             cflags: -DUSE_MMAP
-            codecov: ubuntu_gcc_c17_mmap
+            coverage: ubuntu_gcc_c17_mmap
 
           - name: Ubuntu GCC C23 REDUCED_MEM
             os: ubuntu-latest
             compiler: gcc
             cxx-compiler: g++
             cmake-args: -DCMAKE_C_STANDARD=23 -DWITH_REDUCED_MEM=ON
-            codecov: ubuntu_gcc_c23_reduced_mem
+            coverage: ubuntu_gcc_c23_reduced_mem
 
           - name: Ubuntu GCC No Chorba
             os: ubuntu-latest
             compiler: gcc
             cxx-compiler: g++
-            cmake-args: -DWITH_CHORBA=OFF
-            codecov: ubuntu_gcc_no_chorba
+            cmake-args: -DWITH_CRC32_CHORBA=OFF
+            coverage: ubuntu_gcc_no_chorba
 
           - name: Ubuntu GCC SSE2 UBSAN
             os: ubuntu-latest
             compiler: gcc
             cxx-compiler: g++
             cmake-args: -DWITH_SSSE3=OFF -DWITH_SSE42=OFF -DWITH_AVX2=OFF -DWITH_AVX512=OFF -DWITH_SANITIZER=Undefined
-            codecov: ubuntu_gcc_sse2
+            coverage: ubuntu_gcc_sse2
 
           - name: Ubuntu GCC SSSE3 UBSAN
             os: ubuntu-latest
             compiler: gcc
             cxx-compiler: g++
             cmake-args: -DWITH_SSE42=OFF -DWITH_AVX2=OFF -DWITH_AVX512=OFF -DWITH_SANITIZER=Undefined
-            codecov: ubuntu_gcc_ssse3
+            coverage: ubuntu_gcc_ssse3
 
           - name: Ubuntu GCC SSE4.2 UBSAN
             os: ubuntu-latest
             compiler: gcc
             cxx-compiler: g++
             cmake-args: -DWITH_AVX2=OFF -DWITH_AVX512=OFF -DWITH_SANITIZER=Undefined
-            codecov: ubuntu_gcc_sse42
+            coverage: ubuntu_gcc_sse42
 
           - name: Ubuntu GCC No PCLMULQDQ UBSAN
             os: ubuntu-latest
             compiler: gcc
             cxx-compiler: g++
             cmake-args: -DWITH_PCLMULQDQ=OFF -DWITH_SANITIZER=Undefined
-            codecov: ubuntu_gcc_no_pclmulqdq
+            coverage: ubuntu_gcc_no_pclmulqdq
 
           - name: Ubuntu GCC No AVX512VNNI UBSAN
             os: ubuntu-latest
             compiler: gcc
             cxx-compiler: g++
             cmake-args: -DWITH_AVX512VNNI=OFF -DWITH_SANITIZER=Undefined
-            codecov: ubuntu_gcc_no_avx512vnni
+            coverage: ubuntu_gcc_no_avx512vnni
 
           - name: Ubuntu GCC Compat No Opt ASAN
             os: ubuntu-latest
@@ -133,89 +132,91 @@ jobs:
             cxx-compiler: g++
             cmake-args: -DZLIB_COMPAT=ON -DWITH_NEW_STRATEGIES=OFF -DWITH_OPTIM=OFF -DWITH_SANITIZER=Address
             cflags: -DNOT_TWEAK_COMPILER
-            codecov: ubuntu_gcc_compat_no_opt
+            coverage: ubuntu_gcc_compat_no_opt
 
-          - name: Ubuntu GCC ARM SF ASAN
-            os: ubuntu-latest
-            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-arm.cmake -DWITH_SANITIZER=Address
-            asan-options: detect_leaks=0
+          - name: Ubuntu GCC ARM SF
+            os: ubuntu-24.04-arm
+            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-arm.cmake
             packages: qemu-user crossbuild-essential-armel
             gcov-exec: arm-linux-gnueabi-gcov
-            codecov: ubuntu_gcc_armsf
+            coverage: ubuntu_gcc_armsf
 
-          - name: Ubuntu GCC ARM SF Compat No Opt UBSAN
-            os: ubuntu-latest
-            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-arm.cmake -DZLIB_COMPAT=ON -DWITH_NEW_STRATEGIES=OFF -DWITH_OPTIM=OFF -DWITH_SANITIZER=Undefined
+          - name: Ubuntu GCC ARM SF Compat No Opt
+            os: ubuntu-24.04-arm
+            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-arm.cmake -DZLIB_COMPAT=ON -DWITH_NEW_STRATEGIES=OFF -DWITH_OPTIM=OFF
             packages: qemu-user crossbuild-essential-armel
             gcov-exec: arm-linux-gnueabi-gcov
-            codecov: ubuntu_gcc_armsf_compat_no_opt
+            coverage: ubuntu_gcc_armsf_compat_no_opt
 
           - name: Ubuntu GCC ARM HF ASAN
-            os: ubuntu-latest
-            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-armhf.cmake -DWITH_SANITIZER=Address -DWITH_BENCHMARKS=ON
+            os: ubuntu-24.04-arm
+            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-armhf.cmake -DWITH_BENCHMARKS=ON -DWITH_SANITIZER=Address
             cxxflags: -Wno-psabi -Wno-maybe-uninitialized
             asan-options: detect_leaks=0
             packages: qemu-user crossbuild-essential-armhf
             gcov-exec: arm-linux-gnueabihf-gcov
-            codecov: ubuntu_gcc_armhf
+            coverage: ubuntu_gcc_armhf_asan
 
           - name: Ubuntu GCC ARM HF No Neon No ARMv8 ASAN
-            os: ubuntu-latest
+            os: ubuntu-24.04-arm
             cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-armhf.cmake -DWITH_NEON=OFF -DWITH_ARMV8=OFF -DWITH_SANITIZER=Address
             asan-options: detect_leaks=0
             packages: qemu-user crossbuild-essential-armhf
             gcov-exec: arm-linux-gnueabihf-gcov
-            codecov: ubuntu_gcc_armhf_no_neon_no_armv8
+            coverage: ubuntu_gcc_armhf_no_neon_no_armv8
 
-          - name: Ubuntu GCC ARM HF Compat No Opt UBSAN
-            os: ubuntu-latest
-            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-armhf.cmake -DZLIB_COMPAT=ON -DWITH_NEW_STRATEGIES=OFF -DWITH_OPTIM=OFF -DWITH_SANITIZER=Undefined
+          - name: Ubuntu GCC ARM HF Compat UBSAN
+            os: ubuntu-24.04-arm
+            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-armhf.cmake -DZLIB_COMPAT=ON -DWITH_SANITIZER=Undefined
             packages: qemu-user crossbuild-essential-armhf
             gcov-exec: arm-linux-gnueabihf-gcov
-            codecov: ubuntu_gcc_armhf_compat_no_opt
+            coverage: ubuntu_gcc_armhf_compat_ubsan
 
           - name: Ubuntu GCC AARCH64 ASAN
-            os: ubuntu-22.04
-            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-aarch64.cmake -DWITH_SANITIZER=Address -DWITH_BENCHMARKS=ON
+            os: ubuntu-24.04-arm
+            cmake-args: -DWITH_BENCHMARKS=ON -DWITH_SANITIZER=Address
             asan-options: detect_leaks=0
-            packages: qemu-user gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc-dev-arm64-cross
-            gcov-exec: aarch64-linux-gnu-gcov
-            codecov: ubuntu_gcc_aarch64
+            coverage: ubuntu_gcc_aarch64_asan
 
-          - name: Ubuntu GCC AARCH64 Compat No Opt UBSAN
-            os: ubuntu-22.04
-            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-aarch64.cmake -DZLIB_COMPAT=ON -DWITH_NEW_STRATEGIES=OFF -DWITH_OPTIM=OFF -DWITH_SANITIZER=Undefined
-            packages: qemu-user gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc-dev-arm64-cross
-            gcov-exec: aarch64-linux-gnu-gcov
-            codecov: ubuntu_gcc_aarch64_compat_no_opt
+          - name: Ubuntu GCC AARCH64 Compat UBSAN
+            os: ubuntu-24.04-arm
+            cmake-args: -DZLIB_COMPAT=ON -DWITH_SANITIZER=Undefined
+            coverage: ubuntu_gcc_aarch64_compat_ubsan
+
+          - name: Ubuntu Clang AARCH64 MSAN
+            os: ubuntu-24.04-arm
+            compiler: clang
+            cxx-compiler: clang++
+            cmake-args: -DWITH_SANITIZER=Memory
+            # Coverage disabled, causes MSAN errors
 
           - name: Ubuntu GCC MIPS
             os: ubuntu-latest
             cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-mips.cmake
             packages: qemu-user crossbuild-essential-mips
             gcov-exec: mips-linux-gnu-gcov
-            codecov: ubuntu_gcc_mips
+            coverage: ubuntu_gcc_mips
 
           - name: Ubuntu GCC MIPS64
             os: ubuntu-latest
             cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-mips64.cmake -DWITH_BENCHMARKS=ON
             packages: qemu-user crossbuild-essential-mips64
             gcov-exec: mips64-linux-gnuabi64-gcov
-            codecov: ubuntu_gcc_mips64
+            coverage: ubuntu_gcc_mips64
 
           - name: Ubuntu GCC PPC
             os: ubuntu-latest
             cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-powerpc.cmake
             packages: qemu-user crossbuild-essential-powerpc
             gcov-exec: powerpc-linux-gnu-gcov
-            codecov: ubuntu_gcc_ppc
+            coverage: ubuntu_gcc_ppc
 
           - name: Ubuntu GCC PPC No Power8
             os: ubuntu-latest
             cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-powerpc.cmake -DWITH_POWER8=OFF
             packages: qemu-user crossbuild-essential-powerpc
             gcov-exec: powerpc-linux-gnu-gcov
-            codecov: ubuntu_gcc_ppc_no_power8
+            coverage: ubuntu_gcc_ppc_no_power8
 
           - name: Ubuntu GCC PPC64
             os: ubuntu-latest
@@ -223,7 +224,7 @@ jobs:
             packages: qemu-user gcc-powerpc64-linux-gnu g++-powerpc64-linux-gnu libc-dev-ppc64-cross
             ldflags: -static
             gcov-exec: powerpc64-linux-gnu-gcov
-            codecov: ubuntu_gcc_ppc64
+            coverage: ubuntu_gcc_ppc64
 
           - name: Ubuntu GCC PPC64 Power9
             os: ubuntu-latest
@@ -231,13 +232,13 @@ jobs:
             packages: qemu-user gcc-powerpc64-linux-gnu g++-powerpc64-linux-gnu libc-dev-ppc64-cross
             ldflags: -static
             gcov-exec: powerpc64-linux-gnu-gcov
-            codecov: ubuntu_gcc_ppc64_power9
+            coverage: ubuntu_gcc_ppc64_power9
 
           - name: Ubuntu Clang PPC64 Power9
             os: ubuntu-latest
             cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-powerpc64-clang.cmake
             packages: qemu-user clang binutils-powerpc64-linux-gnu libgcc-11-dev-ppc64-cross libc-dev-ppc64-cross libstdc++-11-dev-ppc64-cross
-            # Codecov disabled for clang on power9, errors
+            # Coverage disabled for clang on power9, errors
 
           - name: Ubuntu GCC PPC64LE
             os: ubuntu-latest
@@ -248,40 +249,40 @@ jobs:
             # mcpu required to test power8 with qemu-ppc64le -cpu power8 (see issue 1378)
             cflags: -mcpu=power8
             cxxflags: -mcpu=power8
-            codecov: ubuntu_gcc_ppc64le
+            coverage: ubuntu_gcc_ppc64le
 
           - name: Ubuntu GCC PPC64LE No VSX
             os: ubuntu-latest
             cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-powerpc64le-power9.cmake -DWITH_POWER8=OFF -DWITH_POWER9=OFF
             packages: qemu-user crossbuild-essential-ppc64el
             gcov-exec: powerpc64le-linux-gnu-gcov
-            codecov: ubuntu_gcc_ppc64le_novsx
+            coverage: ubuntu_gcc_ppc64le_novsx
 
           - name: Ubuntu GCC PPC64LE Power9
             os: ubuntu-latest
             cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-powerpc64le-power9.cmake
             packages: qemu-user crossbuild-essential-ppc64el
             gcov-exec: powerpc64le-linux-gnu-gcov
-            codecov: ubuntu_gcc_ppc64le_power9
+            coverage: ubuntu_gcc_ppc64le_power9
 
           - name: Ubuntu Clang PPC64LE Power9
             os: ubuntu-latest
             cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-powerpc64le-clang.cmake
             packages: qemu-user crossbuild-essential-ppc64el
-            # Codecov disabled for clang on power9, errors
+            # Coverage disabled for clang on power9, errors
 
           - name: Ubuntu GCC RISC-V
             os: ubuntu-latest
             cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-riscv.cmake -DWITH_BENCHMARKS=ON
             packages: qemu-user crossbuild-essential-riscv64
             gcov-exec: riscv64-linux-gnu-gcov
-            codecov: ubuntu_gcc_riscv64
+            coverage: ubuntu_gcc_riscv64
 
           - name: Ubuntu Clang RISC-V
             os: ubuntu-latest
             cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-riscv-clang.cmake
             packages: qemu-user crossbuild-essential-riscv64
-            # Codecov disabled for clang on riscv, errors
+            # Coverage disabled for clang on riscv, errors
 
           - name: Ubuntu GCC 14 LoongArch64
             os: ubuntu-latest
@@ -289,7 +290,7 @@ jobs:
             packages: qemu-user gcc-14-loongarch64-linux-gnu g++-14-loongarch64-linux-gnu libc-dev-loong64-cross
             ldflags: -static
             gcov-exec: loongarch64-linux-gnu-gcov-14
-            codecov: ubuntu_gcc14_loongarch64
+            coverage: ubuntu_gcc14_loongarch64
 
           - name: Ubuntu GCC 14 LoongArch64 No LASX
             os: ubuntu-latest
@@ -297,7 +298,7 @@ jobs:
             packages: qemu-user gcc-14-loongarch64-linux-gnu g++-14-loongarch64-linux-gnu libc-dev-loong64-cross
             ldflags: -static
             gcov-exec: loongarch64-linux-gnu-gcov-14
-            codecov: ubuntu_gcc14_loongarch64_no_lasx
+            coverage: ubuntu_gcc14_loongarch64_no_lasx
 
           - name: Ubuntu GCC SPARC64
             os: ubuntu-latest
@@ -305,87 +306,68 @@ jobs:
             packages: qemu-user gcc-sparc64-linux-gnu g++-sparc64-linux-gnu libc-dev-sparc64-cross
             ldflags: -static
             gcov-exec: sparc64-linux-gnu-gcov
-            codecov: ubuntu_gcc_sparc64
+            coverage: ubuntu_gcc_sparc64
 
-          - name: Ubuntu GCC S390X ASAN
+          - name: Ubuntu GCC S390x
             os: ubuntu-latest
-            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-s390x.cmake -DWITH_SANITIZER=Address -DWITH_BENCHMARKS=ON
-            asan-options: detect_leaks=0
+            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-s390x.cmake -DWITH_BENCHMARKS=ON
             packages: qemu-user crossbuild-essential-s390x
             ldflags: -static
             gcov-exec: s390x-linux-gnu-gcov
-            codecov: ubuntu_gcc_s390x
+            coverage: ubuntu_gcc_s390x
 
-          - name: Ubuntu GCC S390X No vectorized CRC32 ASAN
+          - name: Ubuntu GCC S390X No VX optimizations
             os: ubuntu-latest
-            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-s390x.cmake -DWITH_CRC32_VX=OFF -DWITH_SANITIZER=Address
-            asan-options: detect_leaks=0
+            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-s390x.cmake -DWITH_S390_VX=OFF
             packages: qemu-user crossbuild-essential-s390x
             ldflags: -static
             gcov-exec: s390x-linux-gnu-gcov
-            codecov: ubuntu_gcc_s390x_no_crc32
+            coverage: ubuntu_gcc_s390x_no_crc32
 
-          - name: ${{ github.repository == 'zlib-ng/zlib-ng' && 'EL10' || 'Ubuntu' }} GCC S390X DFLTCC ASAN
+          - name: ${{ github.repository == 'zlib-ng/zlib-ng' && 'EL10' || 'Ubuntu' }} GCC S390X DFLTCC Compat
             os: ${{ github.repository == 'zlib-ng/zlib-ng' && 'z15' || 'ubuntu-latest' }}
             compiler: gcc
             cxx-compiler: g++
             cmake-args: >-
               ${{ github.repository != 'zlib-ng/zlib-ng' && '-DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-s390x.cmake' || '' }}
-              -DWITH_DFLTCC_DEFLATE=ON -DWITH_DFLTCC_INFLATE=ON -DWITH_SANITIZER=Address -DWITH_BENCHMARKS=ON
+              -DWITH_DFLTCC_DEFLATE=ON -DWITH_DFLTCC_INFLATE=ON -DWITH_BENCHMARKS=ON -DZLIB_COMPAT=ON
             packages: qemu-user gcc-s390x-linux-gnu g++-s390x-linux-gnu libc-dev-s390x-cross
-            asan-options: detect_leaks=0
             ldflags: -static
             gcov-exec: ${{ github.repository == 'zlib-ng/zlib-ng' && 'gcov' || 's390x-linux-gnu-gcov' }}
-            codecov: ${{ github.repository == 'zlib-ng/zlib-ng' && 'el10_gcc_s390x_dfltcc' || 'ubuntu_gcc_s390x_dfltcc' }}
-            # The dedicated z15 test VM has 4 cores
-            parallels-jobs: 4
+            coverage: ${{ github.repository == 'zlib-ng/zlib-ng' && 'el10_gcc_s390x_dfltcc' || 'ubuntu_gcc_s390x_dfltcc' }}
 
-          - name: ${{ github.repository == 'zlib-ng/zlib-ng' && 'EL10' || 'Ubuntu' }} GCC S390X DFLTCC UBSAN
+          - name: ${{ github.repository == 'zlib-ng/zlib-ng' && 'EL10 Clang S390X DFLTCC ASAN' || 'Ubuntu GCC S390X DFLTCC' }}
             os: ${{ github.repository == 'zlib-ng/zlib-ng' && 'z15' || 'ubuntu-latest' }}
-            compiler: gcc
-            cxx-compiler: g++
+            compiler: ${{ github.repository == 'zlib-ng/zlib-ng' && 'clang' || 'gcc' }}
+            cxx-compiler: ${{ github.repository == 'zlib-ng/zlib-ng' && 'clang++' || 'g++' }}
+            cmake-args: >-
+              ${{ github.repository == 'zlib-ng/zlib-ng' && '-DWITH_SANITIZER=Address' || '-DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-s390x.cmake' }}
+              -DWITH_DFLTCC_DEFLATE=ON -DWITH_DFLTCC_INFLATE=ON
+            packages: qemu-user gcc-s390x-linux-gnu g++-s390x-linux-gnu libc-dev-s390x-cross
+            asan-options: detect_leaks=0
+            gcov-exec: ${{ github.repository == 'zlib-ng/zlib-ng' && 'llvm-cov gcov' || 's390x-linux-gnu-gcov' }}
+            coverage: ${{ github.repository == 'zlib-ng/zlib-ng' && 'el10_clang_s390x_dfltcc_asan' || 'ubuntu_gcc_s390x_dfltcc' }}
+
+          - name: ${{ github.repository == 'zlib-ng/zlib-ng' && 'EL10 Clang' || 'Ubuntu GCC' }} S390X DFLTCC UBSAN
+            os: ${{ github.repository == 'zlib-ng/zlib-ng' && 'z15' || 'ubuntu-latest' }}
+            compiler: ${{ github.repository == 'zlib-ng/zlib-ng' && 'clang' || 'gcc' }}
+            cxx-compiler: ${{ github.repository == 'zlib-ng/zlib-ng' && 'clang++' || 'g++' }}
             cmake-args: >-
               ${{ github.repository != 'zlib-ng/zlib-ng' && '-DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-s390x.cmake' || '' }}
               -DWITH_DFLTCC_DEFLATE=ON -DWITH_DFLTCC_INFLATE=ON -DWITH_SANITIZER=Undefined
             packages: qemu-user gcc-s390x-linux-gnu g++-s390x-linux-gnu libc-dev-s390x-cross
-            ldflags: -static
-            gcov-exec: ${{ github.repository == 'zlib-ng/zlib-ng' && 'gcov' || 's390x-linux-gnu-gcov' }}
-            codecov: ${{ github.repository == 'zlib-ng/zlib-ng' && 'el10_gcc_s390x_dfltcc' || 'ubuntu_gcc_s390x_dfltcc' }}
-            # The dedicated z15 test VM has 4 cores
-            parallels-jobs: 4
+            gcov-exec: ${{ github.repository == 'zlib-ng/zlib-ng' && 'llvm-cov gcov' || 's390x-linux-gnu-gcov' }}
+            coverage: ${{ github.repository == 'zlib-ng/zlib-ng' && 'el10_clang_s390x_dfltcc_ubsan' || 'ubuntu_gcc_s390x_dfltcc_ubsan' }}
 
-          - name: ${{ github.repository == 'zlib-ng/zlib-ng' && 'EL10' || 'Ubuntu' }} Clang S390X DFLTCC ${{ (github.repository == 'zlib-ng/zlib-ng' && 'MSAN') || 'Compat' }}
+          - name: ${{ github.repository == 'zlib-ng/zlib-ng' && 'EL10 Clang' || 'Ubuntu GCC' }} S390X DFLTCC ${{ (github.repository == 'zlib-ng/zlib-ng' && 'MSAN') || 'Compat' }}
             os: ${{ github.repository == 'zlib-ng/zlib-ng' && 'z15' || 'ubuntu-latest' }}
-            compiler: clang
-            cxx-compiler: clang++
+            compiler: ${{ github.repository == 'zlib-ng/zlib-ng' && 'clang' || 'gcc' }}
+            cxx-compiler: ${{ github.repository == 'zlib-ng/zlib-ng' && 'clang++' || 'g++' }}
             cmake-args: >-
               ${{ github.repository == 'zlib-ng/zlib-ng' && '-GNinja -DWITH_SANITIZER=Memory' || '-DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-s390x.cmake -DZLIB_COMPAT=ON' }}
               -DWITH_DFLTCC_DEFLATE=ON -DWITH_DFLTCC_INFLATE=ON
             packages: qemu-user gcc-s390x-linux-gnu g++-s390x-linux-gnu libc-dev-s390x-cross
-            # The dedicated z15 test VM has 4 cores
-            parallels-jobs: 4
-            # codecov disabled, causes MSAN errors
-
-          - name: Ubuntu MinGW i686
-            os: ubuntu-22.04
-            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-mingw-i686.cmake
-            packages: wine wine32 gcc-mingw-w64-i686 g++-mingw-w64-i686 libpcre2-8-0=10.39-3ubuntu0.1 libpcre2-8-0:i386=10.39-3ubuntu0.1 libodbc1=2.3.9-5ubuntu0.1 libodbc1:i386=2.3.9-5ubuntu0.1 libodbc2=2.3.9-5ubuntu0.1 libodbc2:i386=2.3.9-5ubuntu0.1 libodbccr2=2.3.9-5ubuntu0.1 libodbccr2:i386=2.3.9-5ubuntu0.1 libwine:i386=6.0.3~repack-1 libgphoto2-6:i386=2.5.27-1build2 libsane:i386=1.1.1-5 libgd3=2.3.0-2ubuntu2 libgd3:i386=2.3.0-2ubuntu2 libgcc-s1:i386 libstdc++6:i386
-            ldflags: -static
-            gcov-exec: i686-w64-mingw32-gcov-posix
-            codecov: ubuntu_gcc_mingw_i686
-            # Limit parallel test jobs to prevent wine errors
-            parallels-jobs: 1
-
-          - name: Ubuntu MinGW x86_64
-            os: ubuntu-latest
-            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-mingw-x86_64.cmake -DWITH_BENCHMARKS=ON
-            packages: wine wine64 gcc-mingw-w64 g++-mingw-w64
-            cxxflags: -Wno-unused-parameter
-            ldflags: -static
-            gcov-exec: x86_64-w64-mingw32-gcov-posix
-            codecov: ubuntu_gcc_mingw_x86_64
-             # Limit parallel test jobs to prevent wine errors
-            parallels-jobs: 1
+            # Coverage disabled, causes MSAN errors
 
           - name: Ubuntu Clang-15
             os: ubuntu-latest
@@ -394,7 +376,7 @@ jobs:
             cmake-args: -DCMAKE_LINKER_TYPE=LLD
             packages: clang-15 lld
             gcov-exec: llvm-cov-15 gcov
-            # Codecov disabled for clang-15, errors
+            # Coverage disabled for clang-15, errors
 
           - name: Ubuntu Clang C17 MMAP
             os: ubuntu-latest
@@ -404,7 +386,7 @@ jobs:
             cflags: -DUSE_MMAP
             packages: llvm-18 lld
             gcov-exec: llvm-cov-18 gcov
-            codecov: ubuntu_clang_c17_mmap
+            coverage: ubuntu_clang_c17_mmap
 
           - name: Ubuntu Clang-20 C23
             os: ubuntu-latest
@@ -412,7 +394,7 @@ jobs:
             cxx-compiler: clang++-20
             cmake-args: -DCMAKE_LINKER_TYPE=LLD -DCMAKE_C_STANDARD=23
             packages: clang-20 lld
-            # codecov disabled for clang-20, errors
+            # Coverage disabled for clang-20, errors
 
           # Check for undefined symbols in the version script for the modern api
           - name: Ubuntu Clang-20 Undefined Symbols
@@ -422,7 +404,7 @@ jobs:
             cmake-args: -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=lld -Wl,--no-undefined-version" -DZLIBNG_ENABLE_TESTS=OFF
             build-shared: 'ON'
             packages: clang-20 lld
-            # codecov disabled, no tests run
+            # Coverage disabled, no tests run
 
           # Check for undefined symbols in the version script for the compat api
           - name: Ubuntu Clang-20 Undefined Symbols Compat
@@ -432,7 +414,7 @@ jobs:
             cmake-args: -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=lld -Wl,--no-undefined-version" -DZLIBNG_ENABLE_TESTS=OFF -DZLIB_COMPAT=ON
             build-shared: 'ON'
             packages: clang-20 lld
-            # codecov disabled, no tests run
+            # Coverage disabled, no tests run
 
           - name: Ubuntu Clang Inflate Strict REDUCED_MEM
             os: ubuntu-latest
@@ -441,7 +423,7 @@ jobs:
             cmake-args: -DWITH_INFLATE_STRICT=ON -DWITH_REDUCED_MEM=ON
             packages: llvm-18
             gcov-exec: llvm-cov-18 gcov
-            codecov: ubuntu_clang_inflate_strict_reduced_mem
+            coverage: ubuntu_clang_inflate_strict_reduced_mem
 
           - name: Ubuntu Clang Inflate Allow Invalid Dist
             os: ubuntu-latest
@@ -450,7 +432,7 @@ jobs:
             cmake-args: -DWITH_INFLATE_ALLOW_INVALID_DIST=ON
             packages: llvm-18
             gcov-exec: llvm-cov-18 gcov
-            codecov: ubuntu_clang_inflate_allow_invalid_dist
+            coverage: ubuntu_clang_inflate_allow_invalid_dist
 
           - name: Ubuntu Clang Compat Debug
             os: ubuntu-latest
@@ -460,7 +442,7 @@ jobs:
             packages: llvm-18
             gcov-exec: llvm-cov-18 gcov
             build-config: Debug
-            codecov: ubuntu_clang_compat_debug
+            coverage: ubuntu_clang_compat_debug
 
           - name: Ubuntu Clang-20 MSAN
             os: ubuntu-latest
@@ -469,123 +451,151 @@ jobs:
             cmake-args: -GNinja -DWITH_SANITIZER=Memory
             packages: ninja-build clang-20 llvm-20 libclang-rt-20-dev
             gcov-exec: llvm-cov-20 gcov
+            build-config: Debug
             # https://github.com/llvm/llvm-project/issues/55785
             msan-options: use_sigaltstack=0
-            # codecov disabled for clang-20, errors
+            # Coverage disabled for clang-20, errors
 
           - name: Ubuntu Emscripten WASM32
             os: ubuntu-latest
             chost: wasm32
             cmake-args: -DCMAKE_TOOLCHAIN_FILE=${EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake -DCMAKE_C_COMPILER_TARGET=wasm32 -DCMAKE_CROSSCOMPILING_EMULATOR=${EMSDK_NODE} -DZLIB_COMPAT=ON
-            # codecov disabled for wasm
+            # Coverage disabled for wasm
+
+          - name: Windows MSVC 2026 v145 Win64 C23
+            os: windows-2025-vs2026
+            compiler: cl
+            cmake-args: -G "Visual Studio 18 2026" -A x64 -T v145 -DCMAKE_C_STANDARD=23 -DWITH_BENCHMARKS=ON
+            # Coverage disabled for msvc
 
           - name: Windows MSVC 2022 v143 Win32
             os: windows-latest
             compiler: cl
             cmake-args: -G "Visual Studio 17 2022" -A Win32 -T v143
-            # codecov disabled for msvc
+            # Coverage disabled for msvc
 
           - name: Windows MSVC 2022 v143 Win64
             os: windows-latest
             compiler: cl
             cmake-args: -G "Visual Studio 17 2022" -A x64 -T v143
-            # codecov disabled for msvc
+            # Coverage disabled for msvc
 
           - name: Windows MSVC 2022 v143 Win64 Native Instructions (AVX)
             os: windows-latest
             compiler: cl
             cmake-args: -G "Visual Studio 17 2022" -A x64 -T v143 -DWITH_NATIVE_INSTRUCTIONS=ON -DNATIVE_ARCH_OVERRIDE=/arch:AVX
-            # codecov disabled for msvc
+            # Coverage disabled for msvc
 
           - name: Windows MSVC 2022 v143 Win64 C17
             os: windows-latest
             compiler: cl
             cmake-args: -G "Visual Studio 17 2022" -A x64 -T v143 -DCMAKE_C_STANDARD=17
-            # codecov disabled for msvc
+            # Coverage disabled for msvc
 
           - name: Windows MSVC 2022 v142 Win32
             os: windows-latest
             compiler: cl
             cmake-args: -G "Visual Studio 17 2022" -A Win32 -T v142
-            # codecov disabled for msvc
+            # Coverage disabled for msvc
 
           - name: Windows MSVC 2022 v142 Win64
             os: windows-latest
             compiler: cl
             cmake-args: -G "Visual Studio 17 2022" -A x64 -T v142
-            # codecov disabled for msvc
+            # Coverage disabled for msvc
 
           - name: Windows MSVC 2022 v141 Win32
             os: windows-2022
             compiler: cl
             cmake-args: -G "Visual Studio 17 2022" -A Win32 -T v141
-            # codecov disabled for msvc
+            # Coverage disabled for msvc
 
           - name: Windows MSVC 2022 v141 Win64
             os: windows-2022
             compiler: cl
             cmake-args: -G "Visual Studio 17 2022" -A x64 -T v141
-            # codecov disabled for msvc
+            # Coverage disabled for msvc
 
           - name: Windows MSVC 2022 v140 Win32
             os: windows-2022
             compiler: cl
             cmake-args: -G "Visual Studio 17 2022" -A Win32,version=10.0.14393.0 -T v140 -DCMAKE_SYSTEM_VERSION=10.0.14393.0
-            # codecov disabled for msvc
+            # Coverage disabled for msvc
 
           - name: Windows MSVC 2022 v140 Win64
             os: windows-2022
             compiler: cl
             cmake-args: -G "Visual Studio 17 2022" -A x64,version=10.0.14393.0 -T v140 -DCMAKE_SYSTEM_VERSION=10.0.14393.0
-            # codecov disabled for msvc
+            # Coverage disabled for msvc
 
           - name: Windows MSVC ARM No Test
             os: windows-latest
             compiler: cl
             cmake-args: -A ARM,version=10.0.22621.0
-            # codecov disabled for msvc
+            # Coverage disabled for msvc
 
-          - name: Windows MSVC ARM64 No Test
-            os: windows-latest
+          - name: Windows MSVC ARM64
+            os: windows-11-arm
             compiler: cl
             cmake-args: -A ARM64
-            # codecov disabled for msvc
+            # Coverage disabled for msvc
+
+          - name: Windows MSVC ARM64EC
+            os: windows-11-arm
+            compiler: cl
+            cmake-args: -A ARM64EC
+            # Coverage disabled for msvc
 
           - name: Windows ClangCl Win32
             os: windows-latest
             cmake-args: -T ClangCl -A Win32
-            # codecov disabled for clangcl
+            # Coverage disabled for clangcl
 
           - name: Windows ClangCl Win64
             os: windows-latest
             cmake-args: -T ClangCl -A x64
-            # codecov disabled for clangcl
+            # Coverage disabled for clangcl
 
           - name: Windows ClangCl Win64 Native Instructions (AVX)
             os: windows-latest
             cmake-args: -T ClangCl -A x64 -DWITH_NATIVE_INSTRUCTIONS=ON -DNATIVE_ARCH_OVERRIDE="-mavx -mpclmul"
-            # codecov disabled for clangcl
+            # Coverage disabled for clangcl
 
           - name: Windows GCC
             os: windows-latest
             compiler: gcc
             cxx-compiler: g++
             cmake-args: -G Ninja
-            codecov: win64_gcc
+            coverage: win64_gcc
 
           - name: Windows GCC Native Instructions (AVX)
             os: windows-2022
             compiler: gcc
             cxx-compiler: g++
             cmake-args: -G Ninja  -DWITH_NATIVE_INSTRUCTIONS=ON -DNATIVE_ARCH_OVERRIDE="-mavx -mpclmul"
-            codecov: win64_gcc_native_avx
+            coverage: win64_gcc_native_avx
 
           - name: Windows GCC Compat No Opt
             os: windows-latest
             compiler: gcc
             cxx-compiler: g++
             cmake-args: -G Ninja -DZLIB_COMPAT=ON -DWITH_NEW_STRATEGIES=OFF -DWITH_OPTIM=OFF
-            codecov: win64_gcc_compat_no_opt
+            coverage: win64_gcc_compat_no_opt
+
+          - name: Windows GCC MinGW32
+            os: windows-latest
+            shell: msys2 {0}
+            compiler: i686-w64-mingw32-gcc
+            cxx-compiler: i686-w64-mingw32-g++
+            coverage: win32_gcc
+
+          - name: Windows GCC MinGW32 Compat
+            os: windows-latest
+            shell: msys2 {0}
+            compiler: i686-w64-mingw32-gcc
+            cxx-compiler: i686-w64-mingw32-g++
+            cmake-args: -DZLIB_COMPAT=ON
+            coverage: win32_gcc_compat
 
           - name: macOS Clang (Intel, Target 10.10)
             os: macos-15-intel
@@ -593,90 +603,86 @@ jobs:
             cxx-compiler: clang++
             cmake-args: -DCMAKE_OSX_DEPLOYMENT_TARGET=10.10 -DWITH_BENCHMARKS=ON
             ldflags: -ld_classic
-            codecov: macos_clang_intel
+            coverage: macos_clang_intel
 
           - name: macOS Clang (Intel) ASAN
             os: macos-15-intel
             compiler: clang
             cxx-compiler: clang++
             cmake-args: -DWITH_SANITIZER=Address
-            codecov: macos_clang_intel_asan
+            coverage: macos_clang_intel_asan
 
-          - name: macOS GCC (Intel) UBSAN
+          - name: macOS Clang (Intel) UBSAN
             os: macos-15-intel
-            compiler: gcc-13
-            cxx-compiler: g++-13
+            compiler: clang
+            cxx-compiler: clang++
             cmake-args: -DWITH_SANITIZER=Undefined
-            packages: gcc@13
-            gcov-exec: gcov-13
-            codecov: macos_gcc_intel_ubsan
+            coverage: macos_clang_intel_ubsan
 
           - name: macOS Clang (Intel) Native Instructions
             os: macos-15-intel
             compiler: clang
             cxx-compiler: clang++
             cmake-args: -DWITH_NATIVE_INSTRUCTIONS=ON
-            codecov: macos_clang_native_intel
+            coverage: macos_clang_native_intel
 
           - name: macOS Clang (ARM64) ASAN
             os: macos-latest
             compiler: clang
             cxx-compiler: clang++
             cmake-args: -DWITH_SANITIZER=Address
-            codecov: macos_clang_arm64
+            coverage: macos_clang_arm64
 
-          - name: macOS GCC (ARM64) UBSAN
-            os: macos-14
-            compiler: gcc-13
-            cxx-compiler: g++-13
+          - name: macOS Clang (ARM64) UBSAN
+            os: macos-latest
+            compiler: clang
+            cxx-compiler: clang++
             cmake-args: -DWITH_SANITIZER=Undefined
-            packages: gcc@13
-            gcov-exec: gcov-13
-            codecov: macos_gcc_arm64_ubsan
+            coverage: macos_clang_arm64_ubsan
 
           - name: macOS Clang (ARM64) Native Instructions
             os: macos-latest
             compiler: clang
             cxx-compiler: clang++
             cmake-args: -DWITH_NATIVE_INSTRUCTIONS=ON
-            codecov: macos_clang_arm64_native
+            coverage: macos_clang_arm64_native
 
           - name: Ubuntu LCC e2kv4
             os: ubuntu-latest
-            cmake-args: -DWITH_BENCHMARKS=ON -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-e2k-lcc.cmake -DMCST_LCC_PREFIX=/opt/mcst/lcc-1.29.12.e2k-v4.8c.linux-6.1 -DQEMU_CPU=elbrus-v4 -DBENCHMARK_ENABLE_WERROR=OFF -DBENCHMARK_FORCE_WERROR=OFF
-            toolchain: 1.29.12.e2k-v4.8c.linux-6.1
+            cmake-args: -DWITH_BENCHMARKS=ON -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-e2k-lcc.cmake -DMCST_LCC_PREFIX=/opt/mcst/lcc-1.29.16.e2k-v4.linux-6.1 -DQEMU_CPU=elbrus-v4 -DBENCHMARK_ENABLE_WERROR=OFF -DBENCHMARK_FORCE_WERROR=OFF
+            toolchain: 1.29.16.e2k-v4.linux-6.1
             cflags: -march=elbrus-v4
             cxxflags: -march=elbrus-v4 -DBENCHMARK_HAS_NO_INLINE_ASSEMBLY
             ldflags: -static
-            # Skipping codecov to allow optimized build
+            # Skipping coverage to allow optimized build
 
           - name: Ubuntu LCC e2kv5
             os: ubuntu-latest
-            cmake-args: -DWITH_BENCHMARKS=ON -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-e2k-lcc.cmake -DMCST_LCC_PREFIX=/opt/mcst/lcc-1.29.12.e2k-v5.8c2.linux-6.1 -DQEMU_CPU=elbrus-v5 -DBENCHMARK_ENABLE_WERROR=OFF -DBENCHMARK_FORCE_WERROR=OFF
-            toolchain: 1.29.12.e2k-v5.8c2.linux-6.1
+            cmake-args: -DWITH_BENCHMARKS=ON -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-e2k-lcc.cmake -DMCST_LCC_PREFIX=/opt/mcst/lcc-1.29.16.e2k-v5.linux-6.1 -DQEMU_CPU=elbrus-v5 -DBENCHMARK_ENABLE_WERROR=OFF -DBENCHMARK_FORCE_WERROR=OFF
+            toolchain: 1.29.16.e2k-v5.linux-6.1
             cflags: -march=elbrus-v5
             cxxflags: -march=elbrus-v5 -DBENCHMARK_HAS_NO_INLINE_ASSEMBLY
             ldflags: -static
-            # Skipping codecov to allow optimized build
+            # Skipping coverage to allow optimized build
 
-          - name: Ubuntu LCC e2kv5 (codecov)
+          - name: Ubuntu LCC e2kv5 (coverage)
             os: ubuntu-latest
-            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-e2k-lcc.cmake -DMCST_LCC_PREFIX=/opt/mcst/lcc-1.29.12.e2k-v5.8c2.linux-6.1 -DQEMU_CPU=elbrus-v5
-            toolchain: 1.29.12.e2k-v5.8c2.linux-6.1
+            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-e2k-lcc.cmake -DMCST_LCC_PREFIX=/opt/mcst/lcc-1.29.16.e2k-v5.linux-6.1 -DQEMU_CPU=elbrus-v5
+            toolchain: 1.29.16.e2k-v5.linux-6.1
             cflags: -march=elbrus-v5
             cxxflags: -march=elbrus-v5
             ldflags: -static
-            gcov-exec: /opt/mcst/lcc-1.29.12.e2k-v5.8c2.linux-6.1/gcov/bin/gcov
-            codecov: linux_mcst_lcc_e2kv5
+            gcov-exec: /opt/mcst/lcc-1.29.16.e2k-v5.linux-6.1/gcov/bin/gcov
+            coverage: linux_mcst_lcc_e2kv5
 
           - name: Ubuntu LCC e2kv6
             os: ubuntu-latest
-            cmake-args: -DWITH_BENCHMARKS=OFF -DBUILD_TESTING=OFF -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-e2k-lcc.cmake -DMCST_LCC_PREFIX=/opt/mcst/lcc-1.29.12.e2k-v6.2c3.linux-6.1 -DQEMU_CPU=elbrus-v6 -DBENCHMARK_ENABLE_WERROR=OFF -DBENCHMARK_FORCE_WERROR=OFF
-            toolchain: 1.29.12.e2k-v6.2c3.linux-6.1
+            cmake-args: -DWITH_BENCHMARKS=ON -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-e2k-lcc.cmake -DMCST_LCC_PREFIX=/opt/mcst/lcc-1.29.16.e2k-v6.linux-6.1 -DQEMU_CPU=elbrus-v6 -DBENCHMARK_ENABLE_WERROR=OFF -DBENCHMARK_FORCE_WERROR=OFF
+            toolchain: 1.29.16.e2k-v6.linux-6.1
             cflags: -march=elbrus-v6
             cxxflags: -march=elbrus-v6 -DBENCHMARK_HAS_NO_INLINE_ASSEMBLY
             ldflags: -static
-            # Skipping codecov to allow optimized build
+            # Skipping coverage to allow optimized build
 
     steps:
     - name: Checkout repository
@@ -686,18 +692,25 @@ jobs:
 
     - name: Checkout test corpora
       uses: actions/checkout@v6
-      # Don't test against all corpora with MinGW due to Wine being unable to run parallel jobs
-      # without connection timeout. Without parallel jobs test runs using Wine take close to an hour.
-      # Also don't test the extra corpora with Sanitizer builds or RISC-V or e2k, due to their slow testing.
-      if: ${{ !contains(matrix.name, 'MinGW') && !contains(matrix.name, 'RISC-V') && !contains(matrix.name, 'e2k') && !contains(matrix.cmake-args, 'WITH_SANITIZER') }}
+      # Don't test the extra corpora with Sanitizer builds or RISC-V or e2k, due to their slow testing.
+      if: ${{ !contains(matrix.name, 'RISC-V') && !contains(matrix.name, 'e2k') && !contains(matrix.cmake-args, 'WITH_SANITIZER') }}
       with:
         repository: zlib-ng/corpora
         path: test/data/corpora
         show-progress: false
 
-    - name: Add repositories (Wine)
-      if: contains(matrix.packages, 'wine32')
-      run: sudo dpkg --add-architecture i386
+    - name: Setup MinGW32
+      if: runner.os == 'Windows' && contains(matrix.name, 'MinGW32')
+      uses: msys2/setup-msys2@v2
+      with:
+        update: true
+        msystem: MINGW32
+        install: >-
+          pkg-config
+          make
+          git
+          mingw-w64-i686-toolchain
+          mingw-w64-i686-cmake
 
     - name: Add ubuntu mirrors
       if: runner.os == 'Linux' && !contains(matrix.os, 'z15')
@@ -716,6 +729,7 @@ jobs:
 
     - name: Install packages (Windows)
       if: runner.os == 'Windows'
+      shell: pwsh
       run: |
         # strawberryperl installs /c/Strawberry/c/bin/libstdc++-6.dll, which is incompatible with the mingw64 one.
         # zlib-ng does not need perl, so simply remove it.
@@ -724,6 +738,7 @@ jobs:
 
     - name: Install Visual Studio toolset v140 (Windows)
       if: contains(matrix.name, 'v140')
+      shell: pwsh
       run: |
         # Windows 10 SDK (10.0.14393.795)
         # https://developer.microsoft.com/en-us/windows/downloads/sdk-archive/index-legacy
@@ -744,6 +759,7 @@ jobs:
 
     - name: Install Visual Studio toolset v141 (Windows)
       if: contains(matrix.name, 'v141')
+      shell: pwsh
       run: |
         Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
         $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
@@ -757,6 +773,7 @@ jobs:
         $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
 
     - name: Install Windows 11 SDK (ARM)
+      shell: pwsh
       if: contains(matrix.name, 'MSVC ARM ')
       run: |
         # Windows 11 SDK (10.0.22621.2428)
@@ -773,7 +790,7 @@ jobs:
 
     - name: Install Emscripten
       if: contains(matrix.name, 'WASM32')
-      uses: mymindstorm/setup-emsdk@v14
+      uses: mymindstorm/setup-emsdk@v16
 
     # Get MCST LCC from github actions cache or download from dev.mcst.ru and save to cache
     - name: Cache MCST LCC ${{ matrix.toolchain }} (Ubuntu)
@@ -788,9 +805,9 @@ jobs:
       if: contains(matrix.name, 'e2k') && steps.cache-lcc.outputs.cache-hit != 'true'
       shell: bash
       run: |
-        wget -q https://dev.mcst.ru/downloads/2025-06-27/cross-sp-${{ matrix.toolchain }}_64.tgz
-        sudo tar -xzf cross-sp-${{ matrix.toolchain }}_64.tgz -C /
-        rm -f cross-sp-${{ matrix.toolchain }}_64.tgz
+        wget -q https://dev.mcst.ru/downloads/2026-03-13/cross-sp-public-osl-${{ matrix.toolchain }}_64.tgz
+        sudo tar -xzf cross-sp-public-osl-${{ matrix.toolchain }}_64.tgz -C /
+        rm -f cross-sp-public-osl-${{ matrix.toolchain }}_64.tgz
 
     # Get qemu-e2k-static from github actions cache or download from dev.mcst.ru and save to cache
     - name: Cache MCST QEMU (Ubuntu)
@@ -799,41 +816,66 @@ jobs:
       uses: actions/cache@v5
       with:
         path: /usr/local/bin/qemu-e2k-static
-        key: cache-qemu-e2k-static-20251226
+        key: cache-qemu-e2k-static-2026-02-24
 
     - name: Install MCST QEMU (Ubuntu)
       if: contains(matrix.name, 'e2k') && steps.cache-qemu-e2k-static.outputs.cache-hit != 'true'
       shell: bash
       run: |
-        wget -q https://dev.mcst.ru/downloads/2025-12-26/qemu-e2k-static
+        wget -q https://dev.mcst.ru/downloads/2026-02-24/qemu-e2k-static
         chmod +x qemu-e2k-static
         sudo mv qemu-e2k-static /usr/local/bin
 
-    - name: Initialize Wine
-      # Prevent parallel test jobs from initializing Wine at the same time
-      if: contains(matrix.packages, 'wine')
-      run: wineboot --init
+    - name: Set LLVM_BUILD_DIR for LLVM C++ libraries (MSAN)
+      if: contains(matrix.name, 'MSAN') && startsWith(matrix.compiler, 'clang')
+      run: |
+        echo "LLVM_BUILD_DIR=`pwd`/llvm-project/build" >> $GITHUB_ENV
+
+    - name: Get latest hash change for LLVM C++ libraries (MSAN)
+      if: contains(matrix.name, 'MSAN') && startsWith(matrix.compiler, 'clang')
+      id: llvm-remote-hash
+      run: |
+        HASH=$(git ls-remote https://github.com/llvm/llvm-project refs/heads/release/20.x | cut -f1)
+        if [ -z "$HASH" ]; then
+          echo "Failed to fetch LLVM remote hash"
+          exit 1
+        fi
+        echo "value=$HASH" >> $GITHUB_OUTPUT
+
+    - name: Cache LLVM C++ libraries (MSAN)
+      if: contains(matrix.name, 'MSAN') && startsWith(matrix.compiler, 'clang')
+      id: cache-llvm
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ env.LLVM_BUILD_DIR }}/lib
+          ${{ env.LLVM_BUILD_DIR }}/include
+        key: cache-llvm-${{ matrix.os }}-${{ runner.arch }}-${{ matrix.compiler }}-${{ steps.llvm-remote-hash.outputs.value }}
 
     - name: Compile LLVM C++ libraries (MSAN)
-      if: contains(matrix.name, 'MSAN')
+      if: contains(matrix.name, 'MSAN') && startsWith(matrix.compiler, 'clang') && steps.cache-llvm.outputs.cache-hit != 'true'
       run: |
-        git clone --depth=1 https://github.com/llvm/llvm-project --single-branch --branch release/20.x
-        cmake -S llvm-project/runtimes -B llvm-project/build -G Ninja \
+        # Use sparse-checkout to download only the folders we need (176MB instead of 2302MB)
+        git clone --depth=1 --filter=blob:none https://github.com/llvm/llvm-project --no-checkout --branch release/20.x
+        cd llvm-project
+        git sparse-checkout set cmake runtimes libc libcxx libcxxabi llvm/cmake
+        git checkout
+        cmake -S runtimes -B build -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
           -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi" \
           -DLLVM_USE_SANITIZER=MemoryWithOrigins \
           -DLIBCXXABI_USE_LLVM_UNWINDER=OFF \
+          -DLIBCXX_ENABLE_STATIC=OFF \
           -DLIBCXX_INCLUDE_BENCHMARKS=OFF \
           -DLLVM_INCLUDE_TESTS=OFF \
           -DLLVM_INCLUDE_DOCS=OFF
-        cmake --build llvm-project/build -j3 -- cxx cxxabi
-        echo "LLVM_BUILD_DIR=`pwd`/llvm-project/build" >> $GITHUB_ENV
+        cmake --build build -j5 -- cxx cxxabi
       env:
+        CFLAGS: -O2
         CC: ${{ matrix.compiler }}
         CXX: ${{ matrix.cxx-compiler }}
 
     - name: Generate project files
-      shell: bash
       # Shared libraries turned off for qemu ppc* and sparc & reduce code coverage sources
       run: |
         cmake -S . ${{ matrix.cmake-args }} \
@@ -841,7 +883,7 @@ jobs:
           -DBUILD_SHARED_LIBS=${{ matrix.build-shared || 'OFF' }} \
           -DWITH_FUZZERS=ON \
           -DWITH_MAINTAINER_WARNINGS=ON \
-          ${{ matrix.codecov && '-DWITH_CODE_COVERAGE=ON' }}
+          ${{ matrix.coverage && '-DWITH_CODE_COVERAGE=ON' }}
       env:
         CC: ${{ matrix.compiler }}
         CXX: ${{ matrix.cxx-compiler }}
@@ -851,12 +893,12 @@ jobs:
         CI: true
 
     - name: Compile source code
-      run: cmake --build . --verbose -j2 --config ${{ matrix.build-config || 'Release' }}
+      run: cmake --build . --verbose -j5 --config ${{ matrix.build-config || 'Release' }}
 
     - name: Run test cases
-      # Don't run tests on Windows ARM
-      if: runner.os != 'Windows' || contains(matrix.name, 'ARM') == false
-      run: ctest --verbose -C Release -E benchmark_zlib --output-on-failure --max-width 120 -j ${{ matrix.parallels-jobs || '3' }}
+      # Don't run tests on 32-bit Windows ARM
+      if: runner.os != 'Windows' || contains(matrix.name, 'ARM') == false || runner.arch == 'ARM64'
+      run: ctest --verbose -C ${{ matrix.build-config || 'Release' }} -E benchmark_zlib --output-on-failure --max-width 120 -j ${{ matrix.parallel-jobs || '5' }}
       env:
         ASAN_OPTIONS: ${{ matrix.asan-options || 'verbosity=0' }}:abort_on_error=1:halt_on_error=1
         MSAN_OPTIONS: ${{ matrix.msan-options || 'verbosity=0' }}:abort_on_error=1:halt_on_error=1
@@ -865,41 +907,36 @@ jobs:
         UBSAN_OPTIONS: ${{ matrix.ubsan-options || 'verbosity=0' }}:print_stacktrace=1:abort_on_error=1:halt_on_error=1
 
     - name: Generate coverage report
-      if: matrix.codecov
+      if: matrix.coverage
       shell: bash
       run: |
         python3 -u -m venv ./venv
         source ./venv/${{ runner.os == 'Windows' && 'Scripts' || 'bin' }}/activate
         python3 -u -m pip install gcovr
-        python3 -m gcovr -j 3 --gcov-ignore-parse-errors --verbose \
+        python3 -m gcovr -j 5 --gcov-ignore-parse-errors --verbose \
           --exclude '(.*/|^)(_deps|benchmarks)/.*' \
           --exclude-unreachable-branches \
           --merge-mode-functions separate \
           --merge-lines \
           --gcov-executable "${{ matrix.gcov-exec || 'gcov' }}" \
-          --xml --output ${{ matrix.codecov }}.xml
-
-    - name: Upload coverage report artifact
-      uses: actions/upload-artifact@v6
-      if: matrix.codecov
-      with:
-        name: ${{ matrix.name }} (coverage)
-        path: ${{ matrix.codecov }}.xml
-        retention-days: 1
+          --xml --output ${{ matrix.coverage }}.xml
 
     - name: Upload job coverage report to coveralls
       uses: coverallsapp/github-action@v2
-      if: (matrix.codecov && !contains(matrix.os, 'z15') && (env.COVERALLS_REPO_TOKEN != '' || github.repository == 'zlib-ng/zlib-ng'))
-      with:
-        file: ${{ matrix.codecov }}.xml
-        flag-name: "${{ matrix.name }}-${{ github.event_name }}"
-        parallel: true
       env:
         COVERALLS_REPO_TOKEN: "${{ secrets.COVERALLS_REPO_TOKEN }}"
+      if: |
+        matrix.coverage
+        && !contains(matrix.os, 'z15')
+        && (env.COVERALLS_REPO_TOKEN != '' || github.repository == 'zlib-ng/zlib-ng')
+      with:
+        file: ${{ matrix.coverage }}.xml
+        flag-name: "${{ matrix.name }}-${{ github.event_name }}"
+        parallel: true
 
     - name: Test benchmarks (crashtest only, no coverage data collection)
       if: contains(matrix.cmake-args, '-DWITH_BENCHMARKS=ON')
-      run: ctest --verbose -C Release -R ^benchmark_zlib$ --output-on-failure --max-width 120 -j ${{ matrix.parallels-jobs || '3' }}
+      run: ctest --verbose -C Release -R ^benchmark_zlib$ --output-on-failure --max-width 120 -j ${{ matrix.parallel-jobs || '5' }}
       env:
         ASAN_OPTIONS: ${{ matrix.asan-options || 'verbosity=0' }}:abort_on_error=1:halt_on_error=1
         MSAN_OPTIONS: ${{ matrix.msan-options || 'verbosity=0' }}:abort_on_error=1:halt_on_error=1
@@ -908,7 +945,7 @@ jobs:
         UBSAN_OPTIONS: ${{ matrix.ubsan-options || 'verbosity=0' }}:print_stacktrace=1:abort_on_error=1:halt_on_error=1
 
     - name: Upload build errors
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       if: failure()
       with:
         name: ${{ matrix.name }} (cmake)
@@ -917,45 +954,5 @@ jobs:
           **/CMakeFiles/CMakeOutput.log
           **/CMakeFiles/CMakeError.log
           **/Testing/Temporary/*
-          coverage.xml
+          ${{ matrix.coverage }}.xml
         retention-days: 30
-
-  coverage:
-    name: Upload Coverage Reports
-    runs-on: ubuntu-latest
-    needs: cmake
-    if: cancelled() == false
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v6
-      with:
-        show-progress: false
-
-    - name: Download all reports
-      uses: actions/download-artifact@v7
-      with:
-        merge-multiple: true
-
-    - name: Display all coverage artifacts
-      run: |
-        ls -R *.xml
-        echo "COVERAGE_REPORTS=`ls -p *.xml | grep -v / | tr '\n' ',' | sed 's/,$//g'`" >> $GITHUB_ENV
-
-    - name: Upload reports to codecov
-      uses: codecov/codecov-action@v5
-      if: (env.CODECOV_TOKEN != '' || github.repository == 'zlib-ng/zlib-ng')
-      with:
-        files: ${{ env.COVERAGE_REPORTS }}
-        name: "cmake-umbrella-${{ github.event_name }}"
-        verbose: true
-        fail_ci_if_error: true
-      env:
-        CODECOV_TOKEN: "${{ secrets.CODECOV_TOKEN }}"
-
-    - name: Upload to Coveralls - Final
-      uses: coverallsapp/github-action@v2
-      if: (env.COVERALLS_REPO_TOKEN != '' || github.repository == 'zlib-ng/zlib-ng')
-      with:
-        parallel-finished: true
-      env:
-        COVERALLS_REPO_TOKEN: "${{ secrets.COVERALLS_REPO_TOKEN }}"

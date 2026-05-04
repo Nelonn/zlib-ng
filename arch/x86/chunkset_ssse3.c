@@ -5,10 +5,11 @@
 #ifdef X86_SSSE3
 
 #include "zbuild.h"
+#include "zsanitizer.h"
 #include "zmemory.h"
 
 #include <immintrin.h>
-#include "arch/generic/chunk_128bit_perm_idx_lut.h"
+#include "arch/shared/chunk_128bit_perm_idx_lut.h"
 
 typedef __m128i chunk_t;
 

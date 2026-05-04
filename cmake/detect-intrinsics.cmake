@@ -359,19 +359,19 @@ endmacro()
 
 macro(check_vpclmulqdq_intrinsics)
     if(NOT NATIVEFLAG)
-        if(CMAKE_C_COMPILER_ID MATCHES "GNU" OR CMAKE_C_COMPILER_ID MATCHES "Clang" OR CMAKE_C_COMPILER_ID MATCHES "IntelLLVM" OR CMAKE_C_COMPILER_ID MATCHES "NVHPC")
-            set(VPCLMULFLAG "-mvpclmulqdq -mavx512f")
+        if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|IntelLLVM|NVHPC")
+            set(VPCLMULFLAG "-mvpclmulqdq")
         endif()
     endif()
     # Check whether compiler supports VPCLMULQDQ intrinsics
     if(NOT (APPLE AND ARCH_32BIT))
-        set(CMAKE_REQUIRED_FLAGS "${VPCLMULFLAG} ${NATIVEFLAG} ${ZNOLTOFLAG}")
+        set(CMAKE_REQUIRED_FLAGS "${VPCLMULFLAG} ${AVX2FLAG} ${NATIVEFLAG} ${ZNOLTOFLAG}")
         check_c_source_compiles(
             "#include <immintrin.h>
             #include <wmmintrin.h>
-            __m512i f(__m512i a) {
-                __m512i b = _mm512_setzero_si512();
-                return _mm512_clmulepi64_epi128(a, b, 0x10);
+            __m256i f(__m256i a) {
+                __m256i b = _mm256_setzero_si256();
+                return _mm256_clmulepi64_epi128(a, b, 0x10);
             }
             int main(void) { return 0; }"
             HAVE_VPCLMULQDQ_INTRIN
@@ -677,28 +677,28 @@ macro(check_sse42_intrinsics)
     set(CMAKE_REQUIRED_FLAGS)
 endmacro()
 
-macro(check_vgfma_intrinsics)
+macro(check_s390_vx_intrinsics)
     if(NOT NATIVEFLAG)
-        set(VGFMAFLAG "-march=z13")
+        set(S390VXFLAG "-march=z13")
         if(CMAKE_C_COMPILER_ID MATCHES "GNU")
-            set(VGFMAFLAG "${VGFMAFLAG} -mzarch")
+            set(S390VXFLAG "${S390VXFLAG} -mzarch")
         endif()
         if(CMAKE_C_COMPILER_ID MATCHES "Clang")
-            set(VGFMAFLAG "${VGFMAFLAG} -fzvector")
+            set(S390VXFLAG "${S390VXFLAG} -fzvector")
         endif()
     endif()
-    # Check whether compiler supports "VECTOR GALOIS FIELD MULTIPLY SUM AND ACCUMULATE" intrinsic
-    set(CMAKE_REQUIRED_FLAGS "${VGFMAFLAG} ${NATIVEFLAG} ${ZNOLTOFLAG}")
+    # Check whether compiler supports S390 VX intrinsics
+    set(CMAKE_REQUIRED_FLAGS "${S390VXFLAG} ${NATIVEFLAG} ${ZNOLTOFLAG}")
     check_c_source_compiles(
         "#include <vecintrin.h>
         int main(void) {
-            unsigned long long a __attribute__((vector_size(16))) = { 0 };
-            unsigned long long b __attribute__((vector_size(16))) = { 0 };
-            unsigned char c __attribute__((vector_size(16))) = { 0 };
-            c = vec_gfmsum_accum_128(a, b, c);
-            return c[0];
+            unsigned char a __attribute__((vector_size(16))) = { 0 };
+            unsigned char b __attribute__((vector_size(16))) = { 0 };
+            a = vec_min(a, b);
+            a = vec_xl(0, (unsigned char *)0);
+            return a[0];
         }"
-        HAVE_VGFMA_INTRIN FAIL_REGEX "not supported")
+        HAVE_S390_VX_INTRIN FAIL_REGEX "not supported")
     set(CMAKE_REQUIRED_FLAGS)
 endmacro()
 

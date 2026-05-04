@@ -15,7 +15,7 @@ extern "C" {
 #  else
 #    include "zlib-ng.h"
 #  endif
-#  include "compressible_data_p.h"
+#  include "test/compressible_data_p.h"
 }
 
 #define MAX_SIZE (1024 * 1024)
@@ -160,10 +160,8 @@ public:
     }
 };
 
-#define BENCHMARK_INFLATE(name) \
-    BENCHMARK_DEFINE_F(inflate_bench, name)(benchmark::State& state) { \
-        Bench(state); \
-    } \
-    BENCHMARK_REGISTER_F(inflate_bench, name)->Arg(1)->Arg(64)->Arg(1024)->Arg(16<<10)->Arg(128<<10)->Arg(1024<<10);
-
-BENCHMARK_INFLATE(inflate_nocrc);
+BENCHMARK_DEFINE_F(inflate_bench, inflate_nocrc)(benchmark::State& state) {
+    Bench(state);
+}
+BENCHMARK_REGISTER_F(inflate_bench, inflate_nocrc)
+    ->Arg(1)->Arg(64)->Arg(1024)->Arg(16<<10)->Arg(128<<10)->Arg(1024<<10);

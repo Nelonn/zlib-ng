@@ -6,13 +6,14 @@
 #ifdef LOONGARCH_LASX
 
 #include "zbuild.h"
+#include "zsanitizer.h"
 #include "zmemory.h"
 
 #include <lasxintrin.h>
 #include "lasxintrin_ext.h"
 #include "lsxintrin_ext.h"
 
-#include "arch/generic/chunk_256bit_perm_idx_lut.h"
+#include "arch/shared/chunk_256bit_perm_idx_lut.h"
 
 typedef __m256i chunk_t;
 typedef __m128i halfchunk_t;
