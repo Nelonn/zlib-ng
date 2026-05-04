@@ -71,7 +71,7 @@ static inline void count_lengths(uint16_t *lens, int codes, uint16_t *count) {
     vec_st(sum_lo, 0, &count[0]);
     vec_st(sum_hi, 0, &count[8]);
 
-#elif defined(__ARM_NEON) || defined(__ARM_NEON__)
+#elif (defined(__ARM_NEON) || defined(__ARM_NEON__)) && !(defined(_WIN32) && defined(__clang__))
     int sym;
     uint8x16_t s1 = vdupq_n_u8(0);
     uint8x16_t s2 = vdupq_n_u8(0);
